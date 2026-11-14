@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nutsfinder"
+version = "0.0.1"
+description = "A heads-up no-limit Texas Hold'em bot, built from scratch to learn probability, statistics and game theory."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["numpy"]
+
+[project.optional-dependencies]
+dev = ["pytest", "hypothesis", "matplotlib"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not slow'"
+markers = [
+    "slow: long-running exhaustive checks; opt in with `pytest -m slow`",
+]

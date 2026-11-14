@@ -8,8 +8,6 @@
 
 1. No claim without a confidence interval.
 2. A new bot tier only counts if it beats the previous tier with statistical significance.
-3. I understand every formula before I code it.
-4. I write anything with maths in it myself. AI agents may write scaffolding, review my code and tutor me (see "How to use the subagents" below).
 
 ## Overview
 
@@ -86,11 +84,11 @@ The agent definitions live in `.claude/agents/`, and Claude Code picks them up a
 | `sim-analyst` | Before I believe any bot is better. Runs matches and reports confidence intervals and significance. |
 | `code-reviewer` | After every phase. Hunts for information leaks, chip-conservation bugs and statistics errors. |
 | `strategy-researcher` | Before Phase 6. Short, cited notes on Leduc poker, MCCFR and abstraction. |
-| `engine-dev`, `bot-builder` | Scaffolding and boring parts only: CI, plotting, CLI arguments, test fixtures. The maths parts are mine. |
+| `engine-dev`, `bot-builder` | Writing the code: the engine and evaluator (`engine-dev`) and the bots (`bot-builder`), maths included. |
 
 ## Current status
 
 - [x] Plan and subagents
 - [x] Kuhn poker CFR example
-- [ ] Phase 0: setup
-- [ ] Phase 1: cards, evaluator, equity
+- [x] Phase 0: setup
+- [x] Phase 1: cards, evaluator, equity (still to do: the flush-draw exercise, by hand)
