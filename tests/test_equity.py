@@ -62,10 +62,19 @@ def test_aks_vs_98h_matches_known_equity(board, expected):
 
 
 def test_std_error_shrinks_like_one_over_sqrt_n():
+    # Different seeds, so the two runs are independent (with the same seed the
+    # small run would just be the first 1,000 samples of the large one).
     small = monte_carlo_equity(HERO, VILLAIN, samples=1_000, seed=1)
-    large = monte_carlo_equity(HERO, VILLAIN, samples=16_000, seed=1)
+    large = monte_carlo_equity(HERO, VILLAIN, samples=16_000, seed=2)
     # 16x the samples => about 1/4 of the standard error.
     assert large.std_error / small.std_error == pytest.approx(0.25, rel=0.25)
+
+
+def test_single_sample_has_no_std_error():
+    r = monte_carlo_equity(HERO, VILLAIN, samples=1, seed=0)
+    assert r.samples == 1
+    assert r.wins + r.ties + r.losses == 1
+    assert math.isnan(r.std_error)
 
 
 def test_same_seed_same_result():

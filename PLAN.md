@@ -10,6 +10,7 @@
 2. A new bot tier only counts if it beats the previous tier with statistical significance.
 3. I understand every formula before I code it.
 4. I write anything with maths in it myself. AI agents may write scaffolding, review my code and tutor me (see "How to use the subagents" below).
+   - Exception (2026-11-14): at my request, the Phase 1 hand evaluator and Monte Carlo equity calculator were written by an AI agent. I still owe myself the Phase 1 maths: be able to derive and explain every line of `evaluator.py` and `equity.py`.
 
 ## Overview
 
@@ -92,5 +93,5 @@ The agent definitions live in `.claude/agents/`, and Claude Code picks them up a
 
 - [x] Plan and subagents
 - [x] Kuhn poker CFR example
-- [ ] Phase 0: setup
+- [x] Phase 0: setup
 - [ ] Phase 1: cards, evaluator, equity
