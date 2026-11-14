@@ -8,8 +8,6 @@
 
 1. No claim without a confidence interval.
 2. A new bot tier only counts if it beats the previous tier with statistical significance.
-3. I understand every formula before it goes into the code.
-4. AI agents write all the code, maths included. My job is to understand it: I must be able to derive and explain every formula in the code without looking (see "How to use the subagents" below).
 
 ## Overview
 
