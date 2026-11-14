@@ -94,4 +94,4 @@ The agent definitions live in `.claude/agents/`, and Claude Code picks them up a
 - [x] Plan and subagents
 - [x] Kuhn poker CFR example
 - [x] Phase 0: setup
-- [ ] Phase 1: cards, evaluator, equity
+- [x] Phase 1: cards, evaluator, equity (still to do: the flush-draw exercise, by hand)
