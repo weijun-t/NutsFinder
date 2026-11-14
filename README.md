@@ -66,8 +66,6 @@ pytest              # the normal test run (CI runs this)
 pytest -m slow      # opt-in slow checks, e.g. all 133,784,560 seven-card hands
 ```
 
-Tests for parts that are not written yet are skipped, with the reason shown by `pytest -rs`.
-
 ## Roadmap
 
 See [PLAN.md](PLAN.md) for the full plan. In short:

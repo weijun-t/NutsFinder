@@ -1,7 +1,4 @@
-"""Tests for the hand evaluator (Phase 1).
-
-The whole module is skipped while ``evaluate`` is still a stub (see conftest.py).
-"""
+"""Tests for the hand evaluator (Phase 1)."""
 
 from collections import Counter
 from itertools import combinations
@@ -10,8 +7,6 @@ import pytest
 
 from nutsfinder.engine.cards import FULL_DECK, parse_cards
 from nutsfinder.engine.evaluator import HandCategory, category, evaluate
-
-pytestmark = pytest.mark.usefixtures("evaluator_implemented")
 
 C = HandCategory
 

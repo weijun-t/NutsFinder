@@ -1,4 +1,4 @@
-"""Evaluator interface checks that do not need ``evaluate`` (never skipped)."""
+"""Evaluator interface checks that do not need ``evaluate``."""
 
 from nutsfinder.engine.evaluator import HandCategory, category
 

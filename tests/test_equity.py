@@ -1,8 +1,4 @@
-"""Tests for the Monte Carlo equity calculator (Phase 1).
-
-The whole module is skipped while ``monte_carlo_equity`` is still a stub
-(see conftest.py).
-"""
+"""Tests for the Monte Carlo equity calculator (Phase 1)."""
 
 import math
 
@@ -10,8 +6,6 @@ import pytest
 
 from nutsfinder.engine.cards import parse_cards
 from nutsfinder.engine.equity import EquityResult, monte_carlo_equity
-
-pytestmark = pytest.mark.usefixtures("equity_implemented")
 
 HERO = parse_cards("As Ks")
 VILLAIN = parse_cards("9h 8h")
