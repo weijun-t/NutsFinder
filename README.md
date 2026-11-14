@@ -41,13 +41,32 @@ It runs in a few seconds with plain Python, nothing to install.
 NutsFinder/
 ├── README.md          this file
 ├── PLAN.md            the full roadmap, phase by phase
+├── pyproject.toml     package metadata, dependencies and pytest settings
 ├── examples/          small working demos (Kuhn poker CFR)
 ├── .claude/agents/    AI helper definitions used while building the project
-└── src/nutsfinder/    the bot itself (coming in Phase 0)
-    ├── engine/        cards, hand ranking, game rules
-    ├── bots/          all the bot levels
-    └── eval/          matches between bots, and the statistics
+├── .github/workflows/ CI: runs the tests on every push
+├── src/nutsfinder/    the bot itself
+│   ├── engine/        cards, hand ranking, equity, game rules
+│   ├── bots/          all the bot levels
+│   └── eval/          matches between bots, and the statistics
+├── tests/             pytest test suite
+├── docs/              notes and write-ups
+└── results/           match results (JSON output is not committed)
 ```
+
+## Running the tests
+
+Needs Python 3.12 or newer.
+
+```
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+pytest              # the normal test run (CI runs this)
+pytest -m slow      # opt-in slow checks, e.g. all 133,784,560 seven-card hands
+```
+
+Tests for parts that are not written yet are skipped, with the reason shown by `pytest -rs`.
 
 ## Roadmap
 

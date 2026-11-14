@@ -6,3 +6,4 @@ venv/
 *.egg-info/
 results/*.json
 .DS_Store
+.hypothesis/
