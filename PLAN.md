@@ -41,6 +41,9 @@
 - A `Bot` interface: `act(state, hole_cards) -> action`. Bots never see the opponent's cards or the deck.
 - Everything is reproducible from a seed. Every hand is logged.
 - Fuzz test: total chips are unchanged after 100k random hands.
+- Decisions: chips are integers with SB = 50, BB = 100, and both stacks reset to 10,000 (100bb) every hand.
+  Raise amounts mean "raise to X". Any whole-number size is legal. Minimum raise to = current bet + last raise increment;
+  an all-in for less than a full raise does not reopen the betting.
 
 ### Phase 3: Baselines and measurement
 - `RandomBot`, `CallStationBot`, `AlwaysRaiseBot`.
@@ -91,4 +94,5 @@ The agent definitions live in `.claude/agents/`, and Claude Code picks them up a
 - [x] Plan and subagents
 - [x] Kuhn poker CFR example
 - [x] Phase 0: setup
-- [x] Phase 1: cards, evaluator, equity (still to do: the flush-draw exercise, by hand)
+- [x] Phase 1: cards, evaluator, equity
+- [x] Phase 2: game engine (rules, Bot interface, seeded runner, hand logs; chips conserved over 100k random hands)
