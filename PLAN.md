@@ -96,3 +96,4 @@ The agent definitions live in `.claude/agents/`, and Claude Code picks them up a
 - [x] Phase 0: setup
 - [x] Phase 1: cards, evaluator, equity
 - [x] Phase 2: game engine (rules, Bot interface, seeded runner, hand logs; chips conserved over 100k random hands)
+- [x] Phase 3: baselines and measurement (RandomBot, CallStationBot, AlwaysRaiseBot; bb/100 with SE, 95% CI and p-value; duplicate matches; CI coverage checked at 94.5%; results in `results/baselines.md`)
