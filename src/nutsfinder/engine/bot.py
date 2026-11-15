@@ -69,3 +69,14 @@ class Bot(ABC):
 
     def end_hand(self, summary: HandSummary) -> None:
         """Called once after every hand. Does nothing unless overridden."""
+
+    def reseed(self, seed: int) -> None:
+        """Restart the bot's random number generator from ``seed``.
+
+        The match code in :mod:`nutsfinder.eval.match` calls this before
+        every hand, so a bot's random choices depend only on (master seed,
+        hand number) and not on how many random numbers earlier hands used.
+        Duplicate matches rely on it to give a bot the *same* random stream
+        in both games of a pair. Bots without randomness ignore it (the
+        default does nothing); bots with an RNG must override it.
+        """

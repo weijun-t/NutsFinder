@@ -34,6 +34,10 @@ class RandomBot(Bot):
     def __init__(self, seed: int | None = None) -> None:
         self._rng = random.Random(seed)
 
+    def reseed(self, seed: int) -> None:
+        """Restart the RNG from ``seed`` (see :meth:`Bot.reseed`)."""
+        self._rng = random.Random(seed)
+
     def act(self, state: PublicState, hole_cards: tuple[Card, ...]) -> Action:
         legal = state.legal
         if legal is None or legal.player != state.seat:
