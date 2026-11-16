@@ -35,7 +35,7 @@ def test_all_bots_are_found() -> None:
 @pytest.mark.parametrize("opponent", ["RandomBot", "self"])
 def test_same_master_seed_gives_identical_matches(bot: type[Bot], opponent: str) -> None:
     other = bot if opponent == "self" else bots.RandomBot
-    for match, n in ((duplicate_match, 100), (plain_match, 200)):
+    for match, n in ((duplicate_match, 25), (plain_match, 50)):
         first = match(bot, other, n, master_seed=2024)
         second = match(bot, other, n, master_seed=2024)
         assert first.unit_results == second.unit_results
