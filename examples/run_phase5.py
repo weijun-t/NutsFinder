@@ -70,10 +70,11 @@ so its true gain is 0). All pairings share MASTER_SEED, so session s has
 the same deals against every opponent: rows are correlated and must not be
 combined as if independent.
 
-Budget: hands x pilot ms/hand, BayesBot assumed as expensive as EquityBot
-(BayesBot vs EquityBot costed as EquityBot self-play): ~34 min wall clock
-for all 9 pairings (see --plan). One uniform N for every pairing would need
-160 sessions everywhere, ~45 min. The total number of hands needed does not
+Budget: hands x ms/hand per pairing (MS_PER_HAND_WALL). Planned at ~34 min
+from the pilot (BayesBot assumed as expensive as EquityBot); the official
+run took 96 min, and MS_PER_HAND_WALL is now calibrated to it, so --plan
+prints ~96 min. One uniform N of 160 sessions everywhere would have cost
+proportionally more. The total number of hands needed does not
 depend on the session length (SD_session ~ 1 / sqrt(length) for a fixed
 edge), so shorter sessions would not save time; longer ones would cut the
 number of units below the floor for the cheapest-to-detect pairings.
@@ -136,13 +137,26 @@ N_SESSIONS = {
     # looking at official data (that would be optional stopping).
     "EquityBot": 150,
 }
-# Pilot wall-clock ms per hand with 22 busy processes; BayesBot assumed equal to EquityBot.
+# Wall-clock ms per hand with 22 busy processes, per pairing. The pilot values
+# (EquityBot only: Random 0.91, CallStation 4.90, AlwaysRaise 2.81, PotOdds 6.36,
+# Equity 8.02, with BayesBot assumed equal) predicted 34 min; the official run
+# took 5,772 s (96 min). Recalibrated 2026-11-16: one 250-pair session of every
+# pairing timed twice on a 20-process pool, then scaled by one factor (1.58,
+# for pool contention and the tail of the last pairings) so that the total
+# matches the official 5,772 s. BayesBot is NOT uniformly dearer than
+# EquityBot: per hand it costs 0.66x (vs Random), 0.76x (CallStation),
+# 1.56x (AlwaysRaise), 0.96x (PotOdds) and 0.98x (Equity). Most of the
+# miss was the pilot itself, not BayesBot: every pairing is slower than piloted.
 MS_PER_HAND_WALL = {
-    "RandomBot": 0.91,
-    "CallStationBot": 4.90,
-    "AlwaysRaiseBot": 2.81,
-    "PotOddsBot": 6.36,
-    "EquityBot": 8.02,
+    ("BayesBot", "RandomBot"): 1.78,
+    ("BayesBot", "CallStationBot"): 11.27,
+    ("BayesBot", "AlwaysRaiseBot"): 13.75,
+    ("BayesBot", "PotOddsBot"): 16.88,
+    ("BayesBot", "EquityBot"): 18.38,
+    ("EquityBot", "RandomBot"): 2.69,
+    ("EquityBot", "CallStationBot"): 14.87,
+    ("EquityBot", "AlwaysRaiseBot"): 8.82,
+    ("EquityBot", "PotOddsBot"): 17.61,
 }
 PROCESSES = 22  # of 24 logical cores
 EARLY, LATE = (0, 50), (200, 250)  # pair ranges for the learning-gain test (first / last 100 hands)
@@ -186,7 +200,7 @@ def plan() -> None:
     for a, b in PAIRINGS:
         n = N_SESSIONS[b]
         hands = n * 2 * PAIRS_PER_SESSION
-        sec = hands * MS_PER_HAND_WALL[b] / 1000
+        sec = hands * MS_PER_HAND_WALL[(a, b)] / 1000
         total_s += sec
         sd = SD_MARGIN * PILOT_SD[b]
         mde = (1.959964 + 0.841621) * sd / math.sqrt(n)
