@@ -225,8 +225,10 @@ def equity_vs_range(
     Raises ``ValueError`` for a bad hand/board, ``samples < 1``, or a range
     with no live combos.
     """
+    # min_samples=1: with a single range there is nothing to top up, and the
+    # default (30) would silently raise a request for fewer samples to 30.
     return equity_vs_nested_ranges(
-        hero, [villain_range], board, samples, seed=seed, rng=rng, deadline=deadline
+        hero, [villain_range], board, samples, min_samples=1, seed=seed, rng=rng, deadline=deadline
     )[0]
 
 

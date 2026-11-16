@@ -45,11 +45,21 @@ from nutsfinder.engine.betting import Street
 from nutsfinder.engine.cards import Deck
 from nutsfinder.engine.equity import RANDOM_RANGE, equity_vs_range
 from nutsfinder.engine.evaluator import evaluate
-from nutsfinder.eval.breakdown import breakdown
+from nutsfinder.eval.breakdown import _decisions, breakdown
 from nutsfinder.eval.match import MatchResult, duplicate_match, plain_match
 from nutsfinder.eval.report import save_json, save_plot
 
 MASTER_SEED = 20261116  # fixed before the run; NOT the tuning seed (777) or the holdout (4242)
+# Known overlap, kept so the official results stay valid: 20261116 is also the
+# SEED of examples/make_preflop_table.py, i.e. the same random.Random seed that
+# produced class 0 of both preflop tables (see compute_range_table in
+# nutsfinder/engine/preflop.py). No measurable bias: the tables are constants
+# shared by every bot and every match (so their tiny errors are fixed offsets,
+# not effects that can line up with the deals), and the two uses consume the
+# stream differently from the first draw on (rng.sample for the tables' equity
+# draws, getrandbits(64) for the unit seeds here). Future match seeds must differ from all
+# table seeds, and future generators should derive seeds by hashing
+# (purpose, i, j) rather than adding offsets.
 N_PAIRS = 10_000  # fixed in advance: 20,000 hands per pairing
 PAIRINGS = [
     ("PotOddsBot", "RandomBot"),
@@ -110,16 +120,22 @@ def action_profile(result: MatchResult) -> dict:
     - ``river_aggr_weak``: river bets/raises made with < 50% exact equity
       against a uniformly random hand (a proxy for bluffs; a value bet
       against a random hand needs well over 50%).
-    - ``folds_best_hand``: folds to a bet where the folder's two cards would
-      have won (or tied) on the full five-card board that the seed had in
-      store. Read with care: "would have won at showdown" ignores the
-      betting that would have followed, so it measures how much equity a
-      bot gives up, not how much EV.
+    - ``folds_to_bet``: folds made when facing a bet (something to call).
+    - ``folds_to_bet_best_hand``: of those, the folds where the folder's two
+      cards would have won (or tied) on the full five-card board that the
+      seed had in store. Read with care: "would have won at showdown"
+      ignores the betting that would have followed, so it measures how much
+      equity a bot gives up, not how much EV.
+    - ``free_folds``: folds when checking was free (RandomBot does this);
+      counted separately so they do not inflate the two numbers above.
+
+    The bluff proxy uses a fixed ``seed=0`` so the diagnostics are
+    reproducible (2,000 samples, or exact when the river allows it).
     """
     out: dict = {}
     for who in ("a", "b"):
         prof = {s: {"fold": 0, "check": 0, "call": 0, "bet": 0, "raise": 0, "all_in": 0} for s in STREETS}
-        river_aggr = river_weak = folds = folds_best = 0
+        river_aggr = river_weak = folds = folds_best = free_folds = 0
         for g in result.games:
             seat = g.a_seat if who == "a" else 1 - g.a_seat
             log = g.log
@@ -132,9 +148,16 @@ def action_profile(result: MatchResult) -> dict:
                 prof[st]["all_in"] += bool(r.all_in)
                 if st == "river" and kind in ("bet", "raise"):
                     river_aggr += 1
-                    e = equity_vs_range(log.hole_cards[seat], RANDOM_RANGE, log.board, samples=2000).equity
+                    e = equity_vs_range(
+                        log.hole_cards[seat], RANDOM_RANGE, log.board, samples=2000, seed=0
+                    ).equity
                     river_weak += e < 0.5
             if log.folded == seat:
+                # The fold is the hand's last action: was there a bet to call?
+                *_, (_, _, facing, _) = _decisions(log)
+                if not facing:
+                    free_folds += 1
+                    continue
                 folds += 1
                 deck = Deck(log.seed)
                 deck.deal(4)
@@ -147,8 +170,9 @@ def action_profile(result: MatchResult) -> dict:
             "actions": prof,
             "river_aggressive": river_aggr,
             "river_aggressive_weak": river_weak,
-            "folds": folds,
-            "folds_best_hand": folds_best,
+            "folds_to_bet": folds,
+            "folds_to_bet_best_hand": folds_best,
+            "free_folds": free_folds,
         }
     return out
 
@@ -236,11 +260,12 @@ def pairing_section(d: dict) -> list[str]:
         weak = p["river_aggressive_weak"]
         tot = p["river_aggressive"]
         share = f" ({weak / tot:.0%})" if tot else ""
-        best = f" ({p['folds_best_hand'] / p['folds']:.0%})" if p["folds"] else ""
+        best = f" ({p['folds_to_bet_best_hand'] / p['folds_to_bet']:.0%})" if p["folds_to_bet"] else ""
         lines.append(
             f"- {name}: river bets/raises {tot:,}, of which with < 50% equity vs a random hand "
-            f"(bluff proxy) {weak:,}{share}; folds {p['folds']:,}, of which the folded hand would "
-            f"have won or tied on the full board {p['folds_best_hand']:,}{best}"
+            f"(bluff proxy) {weak:,}{share}; folds to a bet {p['folds_to_bet']:,}, of which the folded "
+            f"hand would have won or tied on the full board {p['folds_to_bet_best_hand']:,}{best}; "
+            f"free folds {p['free_folds']:,}"
         )
     for note in bd["leaks"]:
         lines.append(f"- leak: {note}")

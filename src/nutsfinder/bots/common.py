@@ -37,6 +37,58 @@ we win ``P``::
 
 If the opponent always calls (``f = 0``) and ``e_called = e``, this is the
 "EV if called" that PotOddsBot logs.
+
+The effective stack (unequal stacks)
+------------------------------------
+Chips can only change hands up to the *effective stack*: whatever one
+player puts in beyond what the other can match is handed back (the
+engine's ``refunds``). The engine's ``legal.max_to`` is our own all-in and
+is *not* capped by the opponent's stack (betting more than they have is
+legal, just pointless), so the bots cap themselves. With equal starting
+stacks none of this changes a single number: both players always have the
+same "street total + stack", so the caps below never bind and the excess
+is always 0.
+
+Betting / raising. When we act, the opponent's street total is
+``state.current_bet`` (they made the bet, or the bets are level), so the
+most they can ever have in on this street is::
+
+    eff_to = min(legal.max_to, current_bet + stacks[opponent])
+
+(:func:`effective_max_to`). Every size we consider is capped there, all-in
+included, and the EV uses ``x = min(to, eff_to) - our street total``, the
+chips actually at risk; ``r`` (what they need to call) is already capped
+by their stack. If even a minimum raise is more than the opponent can
+match (``eff_to < legal.min_to``), the only size left is ``min_to``: it is
+legal, it puts the opponent all-in, and the part above ``eff_to`` is
+refunded, so its EV is computed as a raise to ``eff_to``. (Calling instead
+is not quite the same: a raise makes them decide now, for all their chips.)
+
+Worked example B: stacks 10,000 vs 1,000, the deep player limps, the big
+blind checks, pot ``P = 200``; on the flop the short stack checks. The deep
+player's all-in is 9,900 chips, but only ``eff_to = 0 + 900 = 900`` can be
+called. With equity 0.8 (also when called) and ``f = 0.1``::
+
+    EV(all-in) = 0.1 * 200 + 0.9 * (0.8 * (200 + 900 + 900) - 900) = +650
+
+whereas using ``x = 9,900`` and ``r = 900`` gave
+``0.1 * 200 + 0.9 * (0.8 * 11,000 - 9,900) = -970``.
+
+Calling all-in for less. If the bet we face is more than our whole stack,
+calling costs only ``c`` = our stack, and the opponent's chips beyond our
+street total ``+ c`` come back to them. That excess was never really in
+play, so we take it out of the pot (:func:`effective_pot`)::
+
+    excess   = max(0, current_bet - (our street total + c))
+    P_eff    = P - excess
+    pot odds = c / (P_eff + c)
+    EV(call) = e * (P_eff + c) - c
+
+Worked example A: stacks 10,000 vs 600, limp and check (pot 200), the short
+stack checks the flop and faces a bet of 3,000 with 500 behind. Then
+``P = 3,200``, ``c = 500``, excess = 3,000 - 500 = 2,500 and ``P_eff = 700``:
+pot odds 500 / 1,200 = 41.7% (the full pot would say 500 / 3,700 = 13.5%).
+With 25% equity, EV(call) = 0.25 * 1,200 - 500 = -200: fold.
 """
 
 from __future__ import annotations
@@ -51,6 +103,8 @@ from nutsfinder.engine.cards import Card
 __all__ = [
     "Decision",
     "check_turn",
+    "effective_max_to",
+    "effective_pot",
     "raise_to_for_fraction",
     "aggressive_action",
     "pot_odds",
@@ -72,6 +126,23 @@ def check_turn(state: PublicState) -> LegalActions:
     return legal
 
 
+def effective_max_to(state: PublicState) -> int:
+    """The largest bet/raise-to worth making: what the opponent can still match.
+
+    ``eff_to = min(legal.max_to, current_bet + stacks[opponent])``: the
+    opponent's street total is ``current_bet`` and they cannot add more than
+    their stack, so chips above ``eff_to`` would just be refunded. If that is
+    below ``legal.min_to`` (they cannot cover a minimum raise), ``min_to`` is
+    returned instead: the smallest legal raise, which puts them all-in (see
+    the module docstring). Example B: stacks 10,000 vs 1,000 after a limp
+    and a check, ``max_to = 9,900`` but this returns 900.
+    """
+    legal = state.legal
+    assert legal is not None and (legal.can_bet or legal.can_raise)
+    eff_to = min(legal.max_to, state.current_bet + state.stacks[1 - state.seat])
+    return max(eff_to, legal.min_to)
+
+
 def raise_to_for_fraction(state: PublicState, fraction: float) -> int:
     """The bet amount / raise-to total for a bet of ``fraction`` of the pot, clamped.
 
@@ -81,12 +152,14 @@ def raise_to_for_fraction(state: PublicState, fraction: float) -> int:
     :func:`nutsfinder.bots.always_raise.pot_sized_to`; when not facing a bet
     (``c = 0``, current bet 0) it is simply ``fraction * P``. Example: pot
     1,000 on the flop, 2/3 pot bet = 667. The result is rounded to whole
-    chips and clamped to ``[min_to, max_to]``.
+    chips and clamped to ``[min_to, effective_max_to]``: never more than
+    the opponent can call (:func:`effective_max_to`, which equals
+    ``max_to`` when the stacks are equal).
     """
     legal = state.legal
     assert legal is not None and (legal.can_bet or legal.can_raise)
     to = round(state.current_bet + fraction * (state.pot + legal.call_amount))
-    return min(max(to, legal.min_to), legal.max_to)
+    return min(max(to, legal.min_to), effective_max_to(state))
 
 
 def aggressive_action(legal: LegalActions, to: int) -> Action:
@@ -95,8 +168,16 @@ def aggressive_action(legal: LegalActions, to: int) -> Action:
 
 
 def chips_added(state: PublicState, to: int) -> int:
-    """``x``: chips we put in now to make our street total ``to``."""
-    return to - state.street_bets[state.seat]
+    """``x``: chips we put *at risk* by making our street total ``to``.
+
+    That is ``min(to, eff_to) - our street total``, with
+    ``eff_to = current_bet + stacks[opponent]`` the most the opponent can
+    match: anything above it is refunded, so it can be neither won nor lost.
+    (Normally ``to <= eff_to`` already, see :func:`effective_max_to`; the cap
+    matters when a minimum raise is more than the opponent can cover.)
+    """
+    eff_to = state.current_bet + state.stacks[1 - state.seat]
+    return min(to, eff_to) - state.street_bets[state.seat]
 
 
 def chips_to_call_raise(state: PublicState, to: int) -> int:
@@ -108,13 +189,33 @@ def chips_to_call_raise(state: PublicState, to: int) -> int:
     return min(to - state.current_bet, state.stacks[1 - state.seat])
 
 
+def effective_pot(state: PublicState) -> int:
+    """``P_eff``: the pot minus the part of the opponent's bet we cannot match.
+
+    ``excess = max(0, current_bet - (our street total + c))``, with ``c`` the
+    (possibly all-in) call amount; ``P_eff = P - excess``. The excess goes
+    back to the opponent whatever we do, so pot odds and EV(call) must use
+    ``P_eff``. It is 0 unless our call is all-in for less than the bet (so
+    always 0 with equal stacks). Example A: ``P = 3,200``, we have 500
+    behind facing a 3,000 bet: excess = 3,000 - 500 = 2,500, ``P_eff = 700``.
+    """
+    legal = state.legal
+    assert legal is not None
+    excess = state.current_bet - (state.street_bets[state.seat] + legal.call_amount)
+    return state.pot - max(0, excess)
+
+
 def pot_odds(call: int, pot: int) -> float:
-    """Break-even equity for a call: ``c / (P + c)``, ``P`` including the bet faced."""
+    """Break-even equity for a call: ``c / (P + c)``, ``P`` including the bet faced.
+
+    Pass the effective pot (:func:`effective_pot`) so that a call that is
+    all-in for less than the bet is priced correctly.
+    """
     return call / (pot + call)
 
 
 def ev_call(equity: float, pot: int, call: int) -> float:
-    """``e * (P + c) - c``."""
+    """``e * (P + c) - c``, with ``P`` the effective pot (:func:`effective_pot`)."""
     return equity * (pot + call) - call
 
 
@@ -156,9 +257,10 @@ class Decision:
             hold (1.0 = any hand).
         equity: our equity against that range.
         std_error: its standard error (0 if exact, e.g. on the river).
-        pot: ``P``, including any bet we face.
+        pot: ``P``, including any bet we face (the whole pot; when part of
+            the bet would be refunded, the notes give ``P_eff``).
         to_call: ``c`` (0 if we may check).
-        pot_odds: ``c / (P + c)``, or ``None`` when not facing a bet.
+        pot_odds: ``c / (P_eff + c)``, or ``None`` when not facing a bet.
         evs: ``(action label, EV in chips)`` for every action considered.
         action: the action chosen.
         notes: anything else worth showing (e.g. the fold model's numbers).

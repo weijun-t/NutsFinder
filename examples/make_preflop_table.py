@@ -29,7 +29,7 @@ from nutsfinder.engine.preflop import ALL_CLASSES, compute_preflop_table, comput
 
 RANDOM_SAMPLES = 100_000
 RANGE_SAMPLES = 5_000
-SEED = 20261116
+SEED = 20261116  # overlaps the Phase 4 master seed; see compute_range_table's docstring
 ENGINE = Path(__file__).resolve().parent.parent / "src" / "nutsfinder" / "engine"
 
 

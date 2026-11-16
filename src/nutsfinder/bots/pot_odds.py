@@ -12,10 +12,16 @@ opponent hand, and follows three rules (notation as in
    opponent bets 500, so ``P = 1,500``, ``c = 500`` and the pot odds are
    500 / 2,000 = 25%. With 30% equity: call (EV = 0.30 * 2,000 - 500 = +100).
    With 20%: fold (EV of calling would be -100). Exactly 25%: fold (EV 0;
-   ties go to the cheaper option).
+   ties go to the cheaper option). If our call is all-in for less than the
+   bet, ``P`` is the *effective* pot: the opponent's unmatched excess is
+   refunded, so it is not part of what we can win (see
+   :func:`nutsfinder.bots.common.effective_pot`; example A there: 25% equity
+   facing 3,000 with 500 behind needs 41.7%, not 13.5%, so it folds).
 2. **Not facing a bet.** If ``e > bet_threshold`` (default 0.60) and betting
    (or, for the big blind after a limp, raising) is legal, bet 2/3 of the
    pot (``bet_fraction``): to ``current_bet + 2/3 P``. Otherwise check.
+   Bets and raises are never larger than the opponent can call
+   (:func:`nutsfinder.bots.common.effective_max_to`).
 3. It never folds when it can check.
 
 Why these thresholds: against a random hand, 50% equity is "average". A
@@ -63,6 +69,7 @@ from nutsfinder.bots.common import (
     ev_bet,
     ev_call,
     ev_check,
+    effective_pot,
     label,
     pot_odds,
     raise_to_for_fraction,
@@ -151,7 +158,7 @@ class PotOddsBot(Bot):
     def act(self, state: PublicState, hole_cards: tuple[Card, ...]) -> Action:
         legal = check_turn(state)
         equity, se = self.estimate_equity(state, hole_cards)
-        pot, call = state.pot, legal.call_amount
+        pot, call = effective_pot(state), legal.call_amount
         can_aggress = legal.can_bet or legal.can_raise
 
         if legal.can_call:
@@ -177,9 +184,13 @@ class PotOddsBot(Bot):
         """Store (and log) the decision with the "EV if called" of each option."""
         legal = state.legal
         pot, call = state.pot, legal.call_amount
+        pot_eff = effective_pot(state)
+        notes = ["bet/raise EVs assume the opponent always calls"]
+        if pot_eff != pot:
+            notes.append(f"call is all-in for less: {pot - pot_eff} refundable, effective pot {pot_eff}")
         evs: list[tuple[str, float]] = []
         if legal.can_call:
-            evs += [("fold", 0.0), ("call", ev_call(equity, pot, call))]
+            evs += [("fold", 0.0), ("call", ev_call(equity, pot_eff, call))]
         else:
             evs += [("check", ev_check(equity, pot))]
         if legal.can_bet or legal.can_raise:
@@ -200,7 +211,7 @@ class PotOddsBot(Bot):
             pot_odds=odds,
             evs=tuple(evs),
             action=action,
-            notes=("bet/raise EVs assume the opponent always calls",),
+            notes=tuple(notes),
         )
         log.debug("%s", self.last_decision)
 

@@ -147,6 +147,45 @@ def test_nested_ranges_top_up_small_subranges():
     assert results[1].samples >= 150
 
 
+def exact_turn_equity(hero: list[Card], board: list[Card], combos) -> float:
+    """Exact equity on the turn: every live villain combo equally likely, every river card too."""
+    known = set(hero) | set(board)
+    live = {tuple(sorted(c)) for c in combos if c[0] not in known and c[1] not in known}
+    total = 0.0
+    for combo in live:
+        rivers = [c for c in FULL_DECK if c not in known and c not in combo]
+        for river in rivers:
+            mine, theirs = evaluate(hero + board + [river]), evaluate([*combo, *board, river])
+            total += (1.0 if mine > theirs else 0.5 if mine == theirs else 0.0) / len(rivers)
+    return total / len(live)
+
+
+def test_nested_ranges_top_up_is_unbiased():
+    # The top 5% is about 5% of the draws from "any hand", so out of 40 draws it gets
+    # about 2 and is topped up to 30 with direct draws. Both kinds of draw are uniform
+    # over the sub-range, so the pooled estimate must be unbiased. Check the mean over
+    # many seeds against exact enumeration, within 4 standard errors of that mean.
+    # (Topping up from the wide range would give about 0.30 instead of 0.20: 20+ SEs off.)
+    hero, board = cards("7c6c"), cards("8c9dKh2s")
+    narrow = top_range(0.05)
+    exact = exact_turn_equity(hero, board, narrow)
+    estimates = [
+        equity_vs_nested_ranges(hero, [RANDOM_RANGE, narrow], board, samples=40, min_samples=30, seed=s)[1]
+        for s in range(300)
+    ]
+    assert all(r.samples >= 30 for r in estimates)
+    values = [r.equity for r in estimates]
+    mean = sum(values) / len(values)
+    sd = math.sqrt(sum((v - mean) ** 2 for v in values) / (len(values) - 1))
+    assert abs(mean - exact) < 4 * sd / math.sqrt(len(values))
+
+
+def test_equity_vs_range_uses_exactly_the_samples_asked_for():
+    # equity_vs_range has a single range, so nothing may be topped up behind our back.
+    r = equity_vs_range(cards("AsKs"), RANDOM_RANGE, cards("Kh7h2s"), samples=5, seed=1)
+    assert r.samples == 5
+
+
 def test_nested_ranges_require_subsets():
     with pytest.raises(ValueError):
         equity_vs_nested_ranges(cards("AsKs"), [top_range(0.1), top_range(0.5)], samples=10)

@@ -30,6 +30,13 @@ With ``e`` the equity against the assumed range R::
     EV(call)  = e * (P + c) - c
     EV(bet)   = f * P + (1 - f) * (e_called * (P + x + r) - x)
 
+With unequal stacks these use the effective numbers (see "The effective
+stack" in :mod:`nutsfinder.bots.common`): every size, all-in included, is
+capped at what the opponent can call, ``x`` counts only the chips that are
+really at risk, and a call that is all-in for less uses the effective pot
+``P_eff`` (the opponent's unmatched excess is refunded). The fold model
+below then uses that same ``x``. With equal stacks nothing changes.
+
 The fold model
 --------------
 Facing a bet that risks ``x`` to win ``P``, a pure bluff breaks even if
@@ -125,6 +132,8 @@ from nutsfinder.bots.common import (
     ev_bet,
     ev_call,
     ev_check,
+    effective_max_to,
+    effective_pot,
     label,
     pot_odds,
     raise_to_for_fraction,
@@ -205,13 +214,18 @@ class EquityBot(Bot):
         return snap_to_grid(self.range_widths[min(aggressive, len(self.range_widths) - 1)])
 
     def candidate_sizes(self, state: PublicState) -> list[int]:
-        """Distinct legal bet amounts / raise-to totals to consider, smallest first."""
+        """Distinct legal bet amounts / raise-to totals to consider, smallest first.
+
+        All are capped at :func:`effective_max_to` (what the opponent can
+        call), so "all-in" means "put the opponent all-in" when they are the
+        shorter stack, and sizes that collapse to the same amount appear once.
+        """
         legal = state.legal
         if not (legal.can_bet or legal.can_raise):
             return []
         sizes = {raise_to_for_fraction(state, f) for f in self.bet_fractions}
         if self.consider_all_in:
-            sizes.add(legal.max_to)
+            sizes.add(effective_max_to(state))
         return sorted(sizes)
 
     def range_equities(
@@ -242,6 +256,9 @@ class EquityBot(Bot):
     def act(self, state: PublicState, hole_cards: tuple[Card, ...]) -> Action:
         legal = check_turn(state)
         pot, call = state.pot, legal.call_amount
+        # When our call is all-in for less, the opponent's unmatched excess is
+        # refunded: price the call with the effective pot (== pot otherwise).
+        pot_eff = effective_pot(state)
         width = self.villain_range_width(state)
 
         # For each bet size: chips we add (x), chips they need to call (r),
@@ -260,7 +277,9 @@ class EquityBot(Bot):
         options: list[tuple[Action, float]] = []
         notes: list[str] = []
         if legal.can_call:
-            options += [(Fold(), 0.0), (Call(), ev_call(equity, pot, call))]
+            options += [(Fold(), 0.0), (Call(), ev_call(equity, pot_eff, call))]
+            if pot_eff != pot:
+                notes.append(f"call is all-in for less: {pot - pot_eff} refundable, effective pot {pot_eff}")
         else:
             options += [(Check(), ev_check(equity, pot))]
         for action, x, r, f, calling in bets:
@@ -283,7 +302,7 @@ class EquityBot(Bot):
                 std_error=se,
                 pot=pot,
                 to_call=call,
-                pot_odds=pot_odds(call, pot) if legal.can_call else None,
+                pot_odds=pot_odds(call, pot_eff) if legal.can_call else None,
                 evs=tuple((label(a), ev) for a, ev in options),
                 action=action,
                 notes=tuple(notes),

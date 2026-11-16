@@ -28,7 +28,13 @@ ALL_BOTS = [
 
 
 def test_all_bots_are_found() -> None:
-    assert {b.__name__ for b in ALL_BOTS} >= {"RandomBot", "CallStationBot", "AlwaysRaiseBot"}
+    assert {b.__name__ for b in ALL_BOTS} >= {
+        "RandomBot",
+        "CallStationBot",
+        "AlwaysRaiseBot",
+        "PotOddsBot",
+        "EquityBot",
+    }
 
 
 @pytest.mark.parametrize("bot", ALL_BOTS, ids=lambda b: b.__name__)

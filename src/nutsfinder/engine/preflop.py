@@ -121,9 +121,12 @@ def representative(cls: str) -> Combo:
 def compute_preflop_table(samples: int = 100_000, seed: int = 0) -> dict[str, tuple[float, float]]:
     """``{class: (equity, std_error)}`` against a random hand, by Monte Carlo.
 
-    Class number i uses seed ``seed + i``, so the table is reproducible and
-    each class gets an independent stream. Takes about 169 * samples * 11 us
-    (about 3 minutes for the default).
+    Class number i uses seed ``seed + i``, so the table is reproducible.
+    Takes about 169 * samples * 11 us (about 3 minutes for the default).
+
+    Note on seed overlap (kept on purpose, see :func:`compute_range_table`):
+    the streams ``seed + i`` here and ``seed + 100 * i + j`` there are not
+    disjoint, so some entries of the two tables start from the same seed.
     """
     table = {}
     for i, cls in enumerate(ALL_CLASSES):
@@ -200,6 +203,34 @@ def compute_range_table(samples: int = 5_000, seed: int = 0) -> dict[str, tuple[
     of the suits. Class i, grid point j uses seed ``seed + 100 * i + j``.
     With 5,000 samples each SE is at most 0.5 / sqrt(5,000) = 0.71 points.
     Takes about 169 * 15 * samples * 11 us (about 2.5 minutes).
+
+    Known flaw: overlapping seeds (documented, deliberately not fixed).
+    Within this table the seeds ``seed + 100 * i + j`` are distinct (only
+    because j < 15 < 100), but they overlap :func:`compute_preflop_table`'s
+    ``seed + i``: e.g. class 1, grid point 0 here uses ``seed + 100``, the
+    same seed as class 100 of the random-hand table, and class 0, grid
+    point 0 uses ``seed`` itself, the same as class 0 there. The committed tables were
+    made with ``seed = 20261116`` (``examples/make_preflop_table.py``), and
+    that is also the Phase 4 master seed (``examples/run_phase4.py``).
+    Changing any of this would regenerate the tables and so change every
+    preflop decision and the official Phase 4 results, so it stays. Why it
+    does no measurable harm:
+
+    - The tables are *constants*. Every bot and every match uses the same
+      numbers, so an error in an entry is a fixed (tiny, SE <= 0.71 points)
+      offset, not a random effect that could correlate with the cards dealt.
+    - Two entries sharing a seed estimate *different* quantities (different
+      hands, different villain ranges), so their samples are consumed
+      differently from the first draw on: the same starting state does not
+      make the two estimates equal, only (very weakly) dependent.
+    - The match derives its deals and bot seeds from
+      ``random.Random(master_seed).getrandbits(64)``, a different use of the
+      stream again; the deals it produces are ordinary pseudo-random deals.
+
+    For future generators: derive each stream's seed by hashing its purpose
+    and indices, e.g. ``int.from_bytes(hashlib.sha256(f"vs_top/{seed}/{i}/{j}"
+    .encode()).digest()[:8], "big")``, so streams can never collide; and
+    choose match master seeds that differ from every table seed.
     """
     table = {}
     for i, cls in enumerate(ALL_CLASSES):
