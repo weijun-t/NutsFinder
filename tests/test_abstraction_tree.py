@@ -196,3 +196,76 @@ def test_as_arrays_round_trips_the_lists():
         for j, a in enumerate(TREE.actions(n)):
             to = a.amount if isinstance(a, Bet) else a.to if isinstance(a, Raise) else 0
             assert arr["edge_to"][s + j] == to
+
+
+# --- per-edge size labels (step 7 review fix) -------------------------------------
+
+
+def _label_to(label, state: HandState, raises: int, config: AbstractionConfig) -> int:
+    """The chips a label asks for at ``state``, clamped like abstract_actions does."""
+    legal = legal_actions(state)
+    p = state.to_act
+    all_in = max(min(legal.max_to, state.current_bet + state.stacks[1 - p]), legal.min_to)
+    if label.kind == "all_in":
+        return all_in
+    if label.kind == "open_bb":
+        to = round(label.value * config.big_blind)
+    else:
+        to = round(state.current_bet + label.value * (state.pot + legal.call_amount))
+    return min(max(to, legal.min_to), all_in)
+
+
+@pytest.mark.parametrize("config", [
+    DEFAULT_CONFIG,
+    AbstractionConfig(postflop_fractions=(0.5, 1.0)),
+    AbstractionConfig(stack=2_000, preflop_fractions=(0.75, 1.5), postflop_cap=3),
+], ids=["default", "half-pot", "20bb"])
+def test_edge_labels_describe_every_bet_edge(config):
+    tree = TREE if config == DEFAULT_CONFIG else build_tree(config)
+    assert len(tree.edge_sizes) == len(tree.edge_action)
+    merged = 0
+    for n, state, raises in _replay(tree):
+        if tree.player[n] not in (0, 1):
+            continue
+        acts, labels = tree.actions(n), tree.edge_labels(n)
+        for a, labs in zip(acts, labels):
+            if isinstance(a, (Bet, Raise)):
+                assert labs, (n, a)
+                to = a.amount if isinstance(a, Bet) else a.to
+                # Every label on the edge clamps to exactly that edge's chips.
+                assert {_label_to(lab, state, raises, config) for lab in labs} == {to}
+                merged += len(labs) > 1
+            else:
+                assert labs == ()
+        if any(isinstance(a, (Bet, Raise)) for a in acts):
+            assert labels[-1][-1].kind == "all_in"  # all-in is always the last edge
+            assert sum(1 for labs in labels for lab in labs if lab.kind == "all_in") == 1
+    assert merged > 0  # pot clamping to all-in really happens and is recorded
+
+
+def test_edge_labels_examples_and_backward_compatibility():
+    from nutsfinder.abstraction.tree import ALL_IN_LABEL, SizeLabel, abstract_actions, abstract_actions_labelled
+    root = _root_state(DEFAULT_CONFIG)
+    assert [tuple(map(str, labs)) for labs in TREE.edge_labels(0)] == [(), (), ("open_bb:3",), ("all_in",)]
+    assert abstract_actions(root, 0, DEFAULT_CONFIG) == tuple(a for a, _ in abstract_actions_labelled(root, 0, DEFAULT_CONFIG))
+    assert SizeLabel("pot", 1.0).fraction == 1.0 and SizeLabel("open_bb", 3.0).fraction is None
+    assert ALL_IN_LABEL.fraction == float("inf") and str(ALL_IN_LABEL) == "all_in"
+    kinds = {tuple(str(x) for x in labs) for labs in TREE.edge_sizes}
+    assert ("pot:1", "all_in") in kinds  # a pot raise that clamped to the all-in keeps both names
+    assert set(TREE.as_arrays()) == {"player", "street", "terminal", "raises", "parent", "fold_value", "stake",
+                                     "first_child", "n_children", "children", "infoset_base", "contrib",
+                                     "edge_kind", "edge_to"}
+
+
+def test_label_fraction_at_real_spots():
+    from nutsfinder.abstraction.translation import ALL_IN, label_fraction, to_for_fraction
+    from nutsfinder.abstraction.tree import SizeLabel
+    from nutsfinder.engine.betting import public_view
+    root = _root_state(DEFAULT_CONFIG)
+    v = public_view(root, 0)
+    assert label_fraction(v, SizeLabel("open_bb", 3.0)) == pytest.approx(1.0)
+    assert label_fraction(v, SizeLabel("pot", 0.5)) == 0.5
+    assert label_fraction(v, SizeLabel("all_in", ALL_IN)) == ALL_IN
+    assert to_for_fraction(v, label_fraction(v, SizeLabel("open_bb", 4.0))) == 400
+    # An "open to 1bb" below the current bet floors at 0 (the min raise), never a negative fraction.
+    assert label_fraction(v, SizeLabel("open_bb", 0.5)) == 0.0

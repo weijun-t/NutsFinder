@@ -8,6 +8,10 @@
 - :mod:`.holdem_game`: :class:`AbstractHoldem`, the tree + real cards as a
   ``gametheory.Game`` for :class:`~nutsfinder.gametheory.mccfr.MCCFRSolver`.
 - :mod:`.translation`: pseudo-harmonic mapping of off-tree bet sizes (for bots).
+- :mod:`.blueprint`: the checkpoint file format and :class:`~.blueprint.Blueprint`
+  (normalised average strategy lookups for CFRBot).
+- :mod:`.training`: parallel ES-MCCFR (rounds of worker deltas on a frozen snapshot),
+  driven by ``examples/train_holdem.py``.
 
 Submodules are imported explicitly (``from nutsfinder.abstraction.tree import
 build_tree``); this file imports nothing, so loading one part never pulls in

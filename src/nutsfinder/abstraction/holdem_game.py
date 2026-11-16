@@ -68,6 +68,26 @@ class Deal:
     result: int
 
 
+def _check_bucket_counts(config: AbstractionConfig, cards_config: AbstractionConfig,
+                         tree_config: AbstractionConfig) -> None:
+    """Raise ``ValueError`` unless the three configs agree on the buckets of every street.
+
+    Info-set keys are ``tree.infoset_base[node] + bucket``; the tree reserves
+    ``tree.config.buckets(street)`` keys per node, and the card abstraction
+    hands out buckets ``0 .. cards.config.buckets(street) - 1``. If the card
+    abstraction has more buckets than the tree reserved, keys silently spill
+    into the next node's range (two different info sets share regrets), so a
+    mismatch is an error, not a warning.
+    """
+    for street in range(4):
+        counts = {"config": config.buckets(street), "cards.config": cards_config.buckets(street),
+                  "tree.config": tree_config.buckets(street)}
+        if len(set(counts.values())) > 1:
+            detail = ", ".join(f"{k} {v}" for k, v in counts.items())
+            raise ValueError(f"bucket counts disagree on street {street}: {detail}; build the tree "
+                             "and the card abstraction from the same AbstractionConfig")
+
+
 class AbstractHoldem:
     """Heads-up NLHE on the abstract tree with real cards (see module doc)."""
 
@@ -76,7 +96,9 @@ class AbstractHoldem:
         self.config = config
         self.cards = cards if cards is not None else CardAbstraction(config)
         self.tree = tree if tree is not None else build_tree(config)
+        _check_bucket_counts(config, self.cards.config, self.tree.config)
         t = self.tree
+        self._n_buckets = tuple(config.buckets(s) for s in range(4))
         # Hot-loop copies: plain lists and tuples, street transitions skipped.
         self._player = list(t.player)
         self._street = list(t.street)
@@ -107,6 +129,11 @@ class AbstractHoldem:
         r0 = evaluate([FULL_DECK[c] for c in (*hole0, *board)])
         r1 = evaluate([FULL_DECK[c] for c in (*hole1, *board)])
         result = (r0 > r1) - (r0 < r1)
+        for per_street in buckets:
+            for s, b in enumerate(per_street):
+                if not 0 <= b < self._n_buckets[s]:  # cheap: once per deal, not per node
+                    raise ValueError(f"bucket {b} out of range on street {s} "
+                                     f"({self._n_buckets[s]} buckets): card abstraction and tree disagree")
         return Deal((tuple(hole0), tuple(hole1)), tuple(board), buckets, result)  # type: ignore[arg-type]
 
     def sample_chance(self, h: tuple[int, Deal | None], rng: np.random.Generator) -> Deal:

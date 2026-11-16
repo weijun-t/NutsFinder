@@ -38,6 +38,21 @@ call, raise to 300 (the 3bb open = pot raise), all-in (10,000). After
 "fold" the SB loses its 50: fold_value = -50. After "raise to 300, call"
 the flop comes with contributions (300, 300).
 
+Edge size labels
+----------------
+Bet sizes are merged by chip amount (pot = all-in when short, open-3bb = pot
+at an unopened node), so the engine action alone does not say which nominal
+sizes an edge stands for. ``edge_sizes`` (aligned with ``edge_action``)
+records them as :class:`SizeLabel` tuples: ``()`` for fold / check / call /
+street transitions, e.g. ``(open_bb:3,)`` for the preflop open,
+``(pot:1,)`` for a pot raise and ``(pot:1, all_in)`` for a pot raise that
+clamped to the all-in. Every bet/raise edge carries at least one label and
+the all-in edge always carries ``all_in``. A bot facing a real bet builds
+:func:`~nutsfinder.abstraction.translation.translate_bet`'s ``sizes`` from
+the labels of the node it is actually at (:meth:`BettingTree.edge_labels`),
+so a size the node does not have (cap reached, merged away) is never
+offered to the translation.
+
 Info sets
 ---------
 Each decision node n on street s gets ``buckets(s)`` info sets, numbered
@@ -48,7 +63,9 @@ Nodes belong to one player, so the two players' info sets never collide.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
+from typing import Literal
 
 import numpy as np
 
@@ -59,7 +76,8 @@ from nutsfinder.engine.cards import FULL_DECK
 
 __all__ = [
     "CHANCE", "TERMINAL", "NOT_TERMINAL", "FOLD", "SHOWDOWN",
-    "BettingTree", "abstract_actions", "build_tree", "is_all_in_action",
+    "ALL_IN_LABEL", "BettingTree", "SizeLabel", "abstract_actions", "abstract_actions_labelled",
+    "build_tree", "is_all_in_action",
 ]
 
 CHANCE = -1     # street transition (matches nutsfinder.gametheory.game.CHANCE)
@@ -78,33 +96,75 @@ def _all_in_to(state: HandState) -> int:
     return max(eff, legal.min_to)
 
 
+@dataclass(frozen=True, slots=True)
+class SizeLabel:
+    """The nominal size an abstract bet/raise edge was generated from.
+
+    ``kind`` is ``"open_bb"`` (the preflop open, ``value`` = raise-to in big
+    blinds), ``"pot"`` (``value`` = fraction of the pot after calling) or
+    ``"all_in"`` (``value`` = ``inf``). Printed as ``open_bb:3``, ``pot:1``,
+    ``all_in``.
+    """
+
+    kind: Literal["open_bb", "pot", "all_in"]
+    value: float
+
+    @property
+    def fraction(self) -> float | None:
+        """The pot fraction (``inf`` for all-in); ``None`` for ``open_bb`` (it depends on the spot)."""
+        return None if self.kind == "open_bb" else self.value
+
+    def __str__(self) -> str:
+        return "all_in" if self.kind == "all_in" else f"{self.kind}:{self.value:g}"
+
+
+ALL_IN_LABEL = SizeLabel("all_in", math.inf)
+
+
+def abstract_actions_labelled(state: HandState, raises: int, config: AbstractionConfig
+                              ) -> tuple[tuple[Action, tuple[SizeLabel, ...]], ...]:
+    """:func:`abstract_actions` plus the nominal sizes behind each action.
+
+    Each entry is ``(action, labels)``: ``labels`` is ``()`` for fold /
+    check / call; for a bet/raise it is every :class:`SizeLabel` whose chips
+    clamp to that amount, in config order (the all-in edge lists the sizes
+    that clamped to all-in first, then ``all_in``).
+    """
+    legal = legal_actions(state)
+    acts: list[tuple[Action, tuple[SizeLabel, ...]]] = (
+        [(Fold(), ()), (Call(), ())] if legal.can_call else [(Check(), ())])
+    if not (legal.can_bet or legal.can_raise):
+        return tuple(acts)
+    street = int(state.street)
+    all_in = _all_in_to(state)
+    groups: dict[int, list[SizeLabel]] = {}
+    if raises < config.cap(street):
+        if street == 0 and raises == 0:
+            targets = [(round(config.preflop_open_bb * config.big_blind),
+                        SizeLabel("open_bb", float(config.preflop_open_bb)))]
+        else:
+            base = state.pot + legal.call_amount
+            targets = [(round(state.current_bet + f * base), SizeLabel("pot", float(f)))
+                       for f in config.fractions(street, raises)]
+        for to, lab in targets:
+            groups.setdefault(min(max(to, legal.min_to), all_in), []).append(lab)
+    all_in_labels = groups.pop(all_in, []) + [ALL_IN_LABEL]
+    make = Bet if legal.can_bet else Raise
+    acts += [(make(to), tuple(groups[to])) for to in sorted(groups)]
+    acts.append((make(all_in), tuple(all_in_labels)))
+    return tuple(acts)
+
+
 def abstract_actions(state: HandState, raises: int, config: AbstractionConfig) -> tuple[Action, ...]:
     """The abstract actions at ``state``, in a fixed order: fold?, check/call, sizes up, all-in.
 
     ``raises`` is the number of non-all-in bets/raises already made on this
     street. Sizes are clamped to ``[min_to, all-in]``; a size that clamps to
     the all-in amount *is* the all-in (listed once, last), and equal sizes
-    are listed once.
+    are listed once. :func:`abstract_actions_labelled` also says which
+    nominal sizes each bet stands for.
     """
-    legal = legal_actions(state)
-    acts: list[Action] = [Fold(), Call()] if legal.can_call else [Check()]
-    if not (legal.can_bet or legal.can_raise):
-        return tuple(acts)
-    street = int(state.street)
-    all_in = _all_in_to(state)
-    sizes: set[int] = set()
-    if raises < config.cap(street):
-        if street == 0 and raises == 0:
-            targets = [round(config.preflop_open_bb * config.big_blind)]
-        else:
-            base = state.pot + legal.call_amount
-            targets = [round(state.current_bet + f * base) for f in config.fractions(street, raises)]
-        sizes = {min(max(t, legal.min_to), all_in) for t in targets}
-    sizes.discard(all_in)
-    make = Bet if legal.can_bet else Raise
-    acts += [make(to) for to in sorted(sizes)]
-    acts.append(make(all_in))
-    return tuple(acts)
+    return tuple(a for a, _ in abstract_actions_labelled(state, raises, config))
 
 
 def is_all_in_action(state: HandState, action: Action) -> bool:
@@ -119,7 +179,8 @@ class BettingTree:
 
     Edges: node n's children are ``children[first_child[n] : first_child[n] + n_children[n]]``,
     reached by ``edge_action`` at the same positions (engine actions; ``None`` on the
-    single edge out of a street transition).
+    single edge out of a street transition); ``edge_sizes`` holds each edge's
+    :class:`SizeLabel` tuple (see the module doc).
     """
 
     config: AbstractionConfig
@@ -137,6 +198,7 @@ class BettingTree:
     edge_action: list[Action | None] = field(default_factory=list)
     infoset_base: list[int] = field(default_factory=list)
     n_infosets: int = 0
+    edge_sizes: list[tuple[SizeLabel, ...]] = field(default_factory=list)
 
     def as_arrays(self) -> dict[str, np.ndarray]:
         """The integer fields as numpy int64 arrays (e.g. for ``np.savez`` next to a blueprint).
@@ -167,6 +229,11 @@ class BettingTree:
     def actions(self, n: int) -> list[Action | None]:
         s = self.first_child[n]
         return self.edge_action[s:s + self.n_children[n]]
+
+    def edge_labels(self, n: int) -> list[tuple[SizeLabel, ...]]:
+        """Size labels of node n's edges, aligned with :meth:`actions` (``()`` for passive edges)."""
+        s = self.first_child[n]
+        return self.edge_sizes[s:s + self.n_children[n]]
 
     def infoset(self, n: int, bucket: int) -> int:
         """Info-set index of decision node n with card bucket ``bucket``."""
@@ -253,18 +320,20 @@ def _expand(tree: BettingTree, state: HandState, raises: int, parent: int) -> in
     if p == TERMINAL:
         return n
     if p == CHANCE:
-        acts_children = [(None, deal_board(state, _DUMMY_DECK[len(state.board):len(state.board) + state.cards_needed]), 0)]
+        cards = _DUMMY_DECK[len(state.board):len(state.board) + state.cards_needed]
+        acts_children = [(None, (), deal_board(state, cards), 0)]
     else:
         tree.infoset_base[n] = tree.n_infosets
         tree.n_infosets += tree.config.buckets(int(state.street))
         acts_children = []
-        for a in abstract_actions(state, raises, tree.config):
+        for a, labels in abstract_actions_labelled(state, raises, tree.config):
             counts = isinstance(a, (Bet, Raise)) and not is_all_in_action(state, a)
-            acts_children.append((a, apply_action(state, p, a), raises + counts))
+            acts_children.append((a, labels, apply_action(state, p, a), raises + counts))
     # Children are expanded depth-first, then their ids are laid out contiguously.
-    child_ids = [_expand(tree, child, r, n) for _, child, r in acts_children]
+    child_ids = [_expand(tree, child, r, n) for _, _, child, r in acts_children]
     tree.first_child[n] = len(tree.children)
     tree.n_children[n] = len(child_ids)
     tree.children += child_ids
-    tree.edge_action += [a for a, _, _ in acts_children]
+    tree.edge_action += [a for a, _, _, _ in acts_children]
+    tree.edge_sizes += [labels for _, labels, _, _ in acts_children]
     return n

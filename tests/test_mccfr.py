@@ -376,3 +376,19 @@ def test_leduc_other_seeds_converge(seed):
     cp = s.evaluate()
     assert cp.exploitability < LEDUC_SEED_THRESHOLD
     assert_leduc_value(cp, 0.02)
+
+
+def test_reseed_equals_a_fresh_solver():
+    a = MCCFRSolver(LEDUC, seed=5, linear=True, known_infosets=known(LEDUC))
+    a.run(50)
+    a.reseed(9)
+    r0, s0 = a.regrets.copy(), a.strategy_sum.copy()
+    a.run(30)
+    assert a.seed == 9
+    # A fresh solver seeded 9, given a's tables and iteration count, must make the same 30 iterations.
+    c = MCCFRSolver(LEDUC, seed=9, linear=True, known_infosets=known(LEDUC))
+    c.regrets[:] = r0
+    c.strategy_sum[:] = s0
+    c.iteration = 50
+    c.run(30)
+    assert np.array_equal(a.regrets, c.regrets) and np.array_equal(a.strategy_sum, c.strategy_sum)

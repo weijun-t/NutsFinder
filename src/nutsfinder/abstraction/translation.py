@@ -125,6 +125,7 @@ from typing import Literal
 import numpy as np
 
 from nutsfinder.bots.common import aggressive_action, effective_max_to, raise_to_for_fraction
+from nutsfinder.abstraction.tree import SizeLabel
 from nutsfinder.engine.actions import Action, Bet, Call, Check, Raise
 from nutsfinder.engine.betting import PublicState, apply_action, deal_board, new_hand, public_view
 
@@ -142,6 +143,7 @@ __all__ = [
     "view_before_action",
     "translate_last_action",
     "real_action_for_fraction",
+    "label_fraction",
 ]
 
 ALL_IN = math.inf
@@ -436,3 +438,19 @@ def real_action_for_fraction(state: PublicState, fraction: float) -> Action:
     if not (legal.can_bet or legal.can_raise):
         return Call() if legal.can_call else Check()
     return aggressive_action(legal, to_for_fraction(state, fraction))
+
+
+def label_fraction(state: PublicState, label: SizeLabel) -> float:
+    """A tree edge's :class:`~nutsfinder.abstraction.tree.SizeLabel` as a pot fraction at ``state``.
+
+    ``pot:f`` is ``f``; ``all_in`` is :data:`ALL_IN`; ``open_bb:n`` is
+    :func:`fraction_for_bb` at the real spot (floored at 0: an "open to 3bb"
+    below the real current bet, possible only with odd real blinds, means
+    the smallest raise). Use it to build :func:`translate_bet`'s ``sizes``
+    from the edges of the abstract node actually reached.
+    """
+    if label.kind == "all_in":
+        return ALL_IN
+    if label.kind == "open_bb":
+        return max(0.0, fraction_for_bb(state, label.value))
+    return label.value

@@ -226,15 +226,11 @@ class MCCFRSolver:
         self.prune_threshold = prune_threshold
         self.prune_prob = prune_prob
         self.prune_after = prune_after
-        self._rng = np.random.Generator(np.random.PCG64(seed))
         # Optional hook for games whose chance outcomes cannot be listed (see
         # game.SampledChance). Its draws come from a second stream, so games
         # without the hook consume exactly the same uniforms as before.
         self._sample_chance = getattr(game, "sample_chance", None)
-        self._chance_rng = (np.random.Generator(np.random.PCG64(np.random.SeedSequence([seed, 1])))
-                            if self._sample_chance is not None else None)
-        self._buf: list[float] = []
-        self._pos = 0
+        self.reseed(seed)
         # Info-set table: key -> index; per index offset, size, owner, actions.
         self._index: dict[InfosetKey, int] = {}
         self.keys: list[InfosetKey] = []
@@ -252,6 +248,22 @@ class MCCFRSolver:
         if known_infosets is not None:
             for key, (p, acts) in known_infosets.items():
                 self._register(key, p, tuple(acts), verified=False)
+
+    def reseed(self, seed: int) -> None:
+        """Restart every random stream from ``seed``, exactly as the constructor seeds them.
+
+        The tables, counters and options are untouched. After ``reseed(s)``
+        the solver draws the same numbers as a fresh ``MCCFRSolver(..., seed=s)``
+        would, so a long-lived solver can run independent, reproducible
+        batches (the parallel trainer in ``examples/train_holdem.py`` does
+        this once per round per worker).
+        """
+        self.seed = seed
+        self._rng = np.random.Generator(np.random.PCG64(seed))
+        self._chance_rng = (np.random.Generator(np.random.PCG64(np.random.SeedSequence([seed, 1])))
+                            if self._sample_chance is not None else None)
+        self._buf: list[float] = []
+        self._pos = 0
 
     # ------------------------------------------------------------ tables
 

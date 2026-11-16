@@ -7,3 +7,5 @@ venv/
 results/*.json
 .DS_Store
 .hypothesis/
+models/
+*.npz.tmp

@@ -38,8 +38,9 @@ SEED = 61  # hashed with the purpose, so it cannot collide with other streams
 OUT = Path(__file__).resolve().parent.parent / "src" / "nutsfinder" / "abstraction" / "bucket_data.py"
 
 
-def fill_tables(workers: int) -> EHSTables:
-    tables = EHSTables(flop_file=None)
+def compute_turn_tables(workers: int, tables: EHSTables | None = None) -> EHSTables:
+    """Fill every canonical turn table (step 1 above); also used by examples/train_holdem.py."""
+    tables = tables if tables is not None else EHSTables(flop_file=None)
     start = time.perf_counter()
     turns = tables.all_canonical_turns()
     if workers > 1:
@@ -49,6 +50,11 @@ def fill_tables(workers: int) -> EHSTables:
         results = [turn_table_exact(t) for t in turns]
     tables.turn.update(zip(turns, results))
     print(f"{len(turns)} turn tables in {time.perf_counter() - start:.0f} s")
+    return tables
+
+
+def fill_tables(workers: int) -> EHSTables:
+    tables = compute_turn_tables(workers)
     start = time.perf_counter()
     tables.compute_all_flops()
     tables.save_flops(FLOP_FILE)

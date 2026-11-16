@@ -215,3 +215,25 @@ def test_mccfr_iterations_per_second():
     print(f"\nMCCFR on AbstractHoldem: {rate:.1f} it/s, {s.nodes / s.iteration:.0f} nodes/it, "
           f"{len(s.keys)} info sets after {s.iteration} it")
     assert rate > 1
+
+
+# --- config consistency (step 7 review fix) --------------------------------------------
+
+
+def test_bucket_count_mismatch_between_tree_and_config_raises():
+    from nutsfinder.abstraction.config import AbstractionConfig
+    from nutsfinder.abstraction.tree import build_tree
+    with pytest.raises(ValueError, match="bucket counts disagree on street 1"):
+        AbstractHoldem(tree=build_tree(AbstractionConfig(postflop_buckets=(20, 20, 20))))
+
+
+def test_bucket_count_mismatch_with_card_abstraction_raises_and_matching_configs_work():
+    from nutsfinder.abstraction.config import AbstractionConfig
+    cfg = AbstractionConfig(postflop_buckets=(20, 30, 40))
+    edges = {s: tuple(np.linspace(0.05, 0.95, n - 1).tolist()) for s, n in zip((1, 2, 3), (20, 30, 40))}
+    cards = CardAbstraction(cfg, edges=edges, tables=GAME.cards.tables)
+    with pytest.raises(ValueError, match="cards.config 20"):
+        AbstractHoldem(cards=cards, tree=GAME.tree)  # default config + default tree, 20-bucket cards
+    game = AbstractHoldem(cfg, cards=cards)
+    deal = game.make_deal((51, 47), (0, 1), (8, 21, 46, 30, 13))
+    assert all(0 <= deal.buckets[p][s] < cfg.buckets(s) for p in (0, 1) for s in range(4))
