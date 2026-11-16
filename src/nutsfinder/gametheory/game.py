@@ -56,6 +56,16 @@ The contract (what every implementation guarantees)
    be evaluated differently.)
 6. ``utility(h)`` is only called when ``is_terminal(h)``.
 
+Optional: sampled chance
+------------------------
+Some games have too many chance outcomes to list (abstract hold'em deals
+2.8e12 card combinations). Such a game may also implement
+:class:`SampledChance`: ``sample_chance(h, rng)`` returns one outcome drawn
+with its probability, using the numpy ``Generator`` it is given (and no
+other randomness). Sampling solvers (:mod:`~nutsfinder.gametheory.mccfr`)
+use it when present; full-tree solvers and exact best response need
+``chance_outcomes`` and so only run on enumerable games.
+
 Strategy profiles
 -----------------
 A :data:`Profile` maps ``infoset_key -> action probabilities``. The
@@ -101,6 +111,8 @@ import math
 from collections.abc import Hashable, Iterator, Mapping, Sequence
 from typing import Protocol, TypeAlias
 
+import numpy as np
+
 CHANCE: int = -1
 """Value of ``Game.player(h)`` at a chance node. Players are 0 and 1."""
 
@@ -144,6 +156,14 @@ class Game(Protocol):
 
     def next(self, h: History, a: Action) -> History:
         """The history after action a (chance or player) is taken at h."""
+        ...
+
+
+class SampledChance(Protocol):
+    """Optional extra for games whose chance outcomes cannot be enumerated (see module doc)."""
+
+    def sample_chance(self, h: History, rng: np.random.Generator) -> Action:
+        """One chance outcome at chance node h, drawn with its probability from ``rng``."""
         ...
 
 

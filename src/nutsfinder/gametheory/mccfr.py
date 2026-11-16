@@ -141,6 +141,16 @@ Determinism. All randomness comes from one ``numpy.random.Generator``
 uniforms, consumed in a fixed order. The same game, options, seed and
 iteration count give bit-identical tables; no global RNG is used.
 
+Sampled chance (games too big to list). If the game has the optional
+``sample_chance(h, rng)`` method (:class:`~nutsfinder.gametheory.game.SampledChance`,
+e.g. abstract hold'em with its 2.8e12 deals), chance nodes call it instead
+of ``chance_outcomes`` and walk the one outcome it returns. That is exactly
+"sample one outcome with its probability", so the argument above is
+unchanged. Its ``rng`` is a second PCG64 generator seeded with
+``SeedSequence([seed, 1])``, created only for such games: for every other
+game the uniform stream, and hence every table, is bit-identical to a
+solver without the hook.
+
 Cost measure. ``nodes`` counts every history the traversals visit
 (chance, player and terminal), the analogue of the full-tree solver's
 ``iterations x walks x n_nodes``. On this laptop wall times are unreliable
@@ -217,6 +227,12 @@ class MCCFRSolver:
         self.prune_prob = prune_prob
         self.prune_after = prune_after
         self._rng = np.random.Generator(np.random.PCG64(seed))
+        # Optional hook for games whose chance outcomes cannot be listed (see
+        # game.SampledChance). Its draws come from a second stream, so games
+        # without the hook consume exactly the same uniforms as before.
+        self._sample_chance = getattr(game, "sample_chance", None)
+        self._chance_rng = (np.random.Generator(np.random.PCG64(np.random.SeedSequence([seed, 1])))
+                            if self._sample_chance is not None else None)
         self._buf: list[float] = []
         self._pos = 0
         # Info-set table: key -> index; per index offset, size, owner, actions.
@@ -322,6 +338,8 @@ class MCCFRSolver:
             return u if i == 0 else -u
         p = g.player(h)
         if p == CHANCE:
+            if self._sample_chance is not None:
+                return self._walk(g.next(h, self._sample_chance(h, self._chance_rng)), i, w, prune)
             outs = g.chance_outcomes(h)
             j = self._sample([q for _, q in outs])
             return self._walk(g.next(h, outs[j][0]), i, w, prune)
