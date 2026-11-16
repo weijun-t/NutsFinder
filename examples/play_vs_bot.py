@@ -1,15 +1,18 @@
-"""Play heads-up against RandomBot in the terminal.
+"""Play heads-up against any NutsFinder bot in the terminal.
 
-Run:  .venv\\Scripts\\python examples\\play_vs_bot.py
+Run:  .venv\\Scripts\\python examples\\play_vs_bot.py --bot bayes
+      (bots: random, call, raise, potodds, equity, bayes; default bayes)
 
 Type f (fold), x (check), c (call), or a number to bet/raise TO that many
-chips (e.g. 300). Type q to quit. Blinds are 50/100 and stacks reset to
+chips (e.g. 300). Type r to see what BayesBot has learned about you so far
+(BayesBot only). Type q to quit. Blinds are 50/100 and stacks reset to
 10,000 every hand. You are seat 0; the button alternates.
 """
 
+import argparse
 import random
 
-from nutsfinder.bots.random_bot import RandomBot
+from nutsfinder.bots import AlwaysRaiseBot, BayesBot, CallStationBot, EquityBot, PotOddsBot, RandomBot
 from nutsfinder.engine.actions import Bet, Call, Check, Fold, Raise
 from nutsfinder.engine.betting import BIG_BLIND
 from nutsfinder.engine.bot import Bot
@@ -23,6 +26,9 @@ class Quit(Exception):
 
 class HumanBot(Bot):
     """A "bot" that asks you at the keyboard. It sees exactly what bots see."""
+
+    def __init__(self, opponent=None):
+        self.opponent = opponent
 
     def act(self, state, hole_cards):
         legal = state.legal
@@ -44,6 +50,9 @@ class HumanBot(Bot):
             choice = input("  " + "  |  ".join(options) + "  > ").strip().lower()
             if choice == "q":
                 raise Quit
+            if choice == "r":
+                show_read(self.opponent)
+                continue
             if choice == "f":
                 action = Fold()
             elif choice == "x":
@@ -60,9 +69,31 @@ class HumanBot(Bot):
             print("  not legal right now")
 
 
-seed = random.randrange(2**32)
+def show_read(bot):
+    if isinstance(bot, BayesBot):
+        print("\n".join(bot.model.lines()))
+    else:
+        print("  (only BayesBot keeps a model of you)")
+
+
+BOTS = {
+    "random": lambda seed: RandomBot(seed=seed),
+    "call": lambda seed: CallStationBot(),
+    "raise": lambda seed: AlwaysRaiseBot(),
+    "potodds": lambda seed: PotOddsBot(seed=seed),
+    "equity": lambda seed: EquityBot(seed=seed),
+    "bayes": lambda seed: BayesBot(seed=seed),
+}
+ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+ap.add_argument("--bot", choices=BOTS, default="bayes")
+ap.add_argument("--seed", type=int, default=None, help="fix the deals (default: random)")
+args = ap.parse_args()
+
+seed = random.randrange(2**32) if args.seed is None else args.seed
 rng = random.Random(seed)
-bots = [HumanBot(), RandomBot(seed=rng.getrandbits(64))]
+opponent = BOTS[args.bot](rng.getrandbits(64))
+bots = [HumanBot(opponent), opponent]
+print(f"you vs {type(opponent).__name__}, seed {seed}. f/x/c/<number>, r = bot's read on you, q = quit")
 total = 0
 hand = 0
 try:
@@ -76,3 +107,5 @@ try:
         print("=" * 50)
 except (Quit, EOFError, KeyboardInterrupt):
     print(f"\nbye. {hand} hands, {total / BIG_BLIND:+.1f} bb")
+    if isinstance(opponent, BayesBot):
+        show_read(opponent)
