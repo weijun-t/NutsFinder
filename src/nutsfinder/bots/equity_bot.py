@@ -213,6 +213,22 @@ class EquityBot(Bot):
         )
         return snap_to_grid(self.range_widths[min(aggressive, len(self.range_widths) - 1)])
 
+    def fold_and_calling(self, state: PublicState, width: float, to: int, added: int) -> tuple[float, float]:
+        """``(f, calling range width)`` for a bet/raise to ``to`` that adds ``x = added`` chips.
+
+        ``f = min(max_fold, x / (P + x))`` and the calling range is the top
+        ``w * MDF`` snapped to the grid (see the module docstring). A hook, so
+        that BayesBot (tier 3) can replace this fixed model with a learned one.
+        """
+        pot = state.pot
+        f = fold_probability(pot, added, self.max_fold)
+        calling = snap_to_grid(width * calling_share(pot, added))
+        return f, calling
+
+    def model_notes(self, state: PublicState) -> list[str]:
+        """Extra lines for the debug :class:`Decision` (none here; BayesBot adds its model)."""
+        return []
+
     def candidate_sizes(self, state: PublicState) -> list[int]:
         """Distinct legal bet amounts / raise-to totals to consider, smallest first.
 
@@ -266,8 +282,7 @@ class EquityBot(Bot):
         bets = []
         for to in self.candidate_sizes(state):
             x, r = chips_added(state, to), chips_to_call_raise(state, to)
-            f = fold_probability(pot, x, self.max_fold)
-            calling = snap_to_grid(width * calling_share(pot, x))
+            f, calling = self.fold_and_calling(state, width, to, x)
             bets.append((aggressive_action(legal, to), x, r, f, calling))
 
         needed = [width] + sorted({b[4] for b in bets} - {width}, reverse=True)
@@ -293,6 +308,7 @@ class EquityBot(Bot):
         action, _ = max(options, key=lambda option: option[1])
 
         if self.debug:
+            notes += self.model_notes(state)
             self.last_decision = Decision(
                 street=state.street.name.lower(),
                 hole_cards=cards_text(hole_cards),
