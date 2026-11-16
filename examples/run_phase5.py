@@ -57,10 +57,21 @@ with a floor of 50 sessions (CLT and a stable SD estimate):
     CallStationBot      189.1       113         120        60,000
     AlwaysRaiseBot      219.5       152         160        80,000
     PotOddsBot          113.9        41          50        25,000
-    EquityBot           148.3        70          70        35,000
+    EquityBot           148.3        70         150        75,000
+
+BayesBot vs EquityBot is the tier test and was raised from the power
+minimum of 70 to 150 sessions BEFORE the official run (seed-555/556 tuning
+put the edge at only ~+50 to +90 bb/100; 150 sessions give ~98% power at
+50, MDE ~34 bb/100). It is the single pre-registered primary test; the
+other pairings, the learning gains and the paired differences are
+secondary/descriptive (about 22 tests at alpha 0.05, uncorrected). The
+EquityBot learning-gain rows are a null control (EquityBot has no memory,
+so its true gain is 0). All pairings share MASTER_SEED, so session s has
+the same deals against every opponent: rows are correlated and must not be
+combined as if independent.
 
 Budget: hands x pilot ms/hand, BayesBot assumed as expensive as EquityBot
-(BayesBot vs EquityBot costed as EquityBot self-play): ~28 min wall clock
+(BayesBot vs EquityBot costed as EquityBot self-play): ~34 min wall clock
 for all 9 pairings (see --plan). One uniform N for every pairing would need
 160 sessions everywhere, ~45 min. The total number of hands needed does not
 depend on the session length (SD_session ~ 1 / sqrt(length) for a fixed
