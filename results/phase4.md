@@ -5,8 +5,8 @@
 - n: 10,000 duplicate pairs = 20,000 hands per pairing, fixed in advance, no early stopping
 - duplicate: each deal played twice, bots swapped between seats (cards and button swap with them)
 - bot parameters: the committed defaults (PotOddsBot: bet > 60%, raise > 70%, 300 samples; EquityBot: ranges 100/50/30/15%, sizes 1/2 pot, pot, all-in, max_fold 0.1, 400 samples)
-- commit: 7def511 + uncommitted changes
-- run time: 757 s wall clock (14 processes; 5589 s summed over the 14 jobs). Every job is determined by its pairing and the master seed alone, so parallelism cannot change any number.
+- commit: d978824
+- run time: 1333 s wall clock (14 processes; 9772 s summed over the 14 jobs). Every job is determined by its pairing and the master seed alone, so parallelism cannot change any number.
 
 ## Tuning history (why this seed)
 
@@ -74,8 +74,8 @@ would be needed for the same precision.
 | Random | turn | 4,741 | 1,676 | 1,187 | 417 | 1,244 | 217 | 276 | 1,041 | 39% | 1,269 |
 | Random | river | 2,097 | 733 | 532 | 194 | 566 | 72 | 155 | 469 | 43% | 530 |
 
-- PotOdds: river bets/raises 469, of which with < 50% equity vs a random hand (bluff proxy) 0 (0%); folds 4,747, of which the folded hand would have won or tied on the full board 1,889 (40%)
-- Random: river bets/raises 638, of which with < 50% equity vs a random hand (bluff proxy) 346 (54%); folds 13,275, of which the folded hand would have won or tied on the full board 6,523 (49%)
+- PotOdds: river bets/raises 469, of which with < 50% equity vs a random hand (bluff proxy) 0 (0%); folds to a bet 4,747, of which the folded hand would have won or tied on the full board 1,889 (40%); free folds 0
+- Random: river bets/raises 638, of which with < 50% equity vs a random hand (bluff proxy) 346 (54%); folds to a bet 5,437, of which the folded hand would have won or tied on the full board 2,208 (41%); free folds 7,838
 - leak: RandomBot (B) folded 7,838 times when checking was free (pure loss: it gives up its equity in the pot for nothing)
 
 ### PotOdds vs CallStation
@@ -96,8 +96,8 @@ would be needed for the same precision.
 | CallStation | turn | 23,421 | 0 | 16,580 | 6,841 | 0 | 0 | 0 | 6,841 | 0% | 0 |
 | CallStation | river | 23,966 | 0 | 16,065 | 7,901 | 0 | 0 | 0 | 7,901 | 0% | 0 |
 
-- PotOdds: river bets/raises 7,901, of which with < 50% equity vs a random hand (bluff proxy) 0 (0%); folds 0, of which the folded hand would have won or tied on the full board 0
-- CallStation: river bets/raises 0, of which with < 50% equity vs a random hand (bluff proxy) 0; folds 0, of which the folded hand would have won or tied on the full board 0
+- PotOdds: river bets/raises 7,901, of which with < 50% equity vs a random hand (bluff proxy) 0 (0%); folds to a bet 0, of which the folded hand would have won or tied on the full board 0; free folds 0
+- CallStation: river bets/raises 0, of which with < 50% equity vs a random hand (bluff proxy) 0; folds to a bet 0, of which the folded hand would have won or tied on the full board 0; free folds 0
 - leak: PotOddsBot (A) never folds to preflop bets (10,000 times faced): bluffing it is pointless, value-bet it
 - leak: CallStationBot (B) never folds to preflop bets (11,767 times faced): bluffing it is pointless, value-bet it
 - leak: CallStationBot (B) never folds to flop bets (6,183 times faced): bluffing it is pointless, value-bet it
@@ -122,8 +122,8 @@ would be needed for the same precision.
 | AlwaysRaise | turn | 12,299 | 0 | 0 | 437 | 9,808 | 2,054 | 1,804 | 2,491 | 0% | 0 |
 | AlwaysRaise | river | 7,941 | 0 | 0 | 907 | 6,541 | 493 | 1,836 | 1,400 | 0% | 0 |
 
-- PotOdds: river bets/raises 1,400, of which with < 50% equity vs a random hand (bluff proxy) 0 (0%); folds 8,809, of which the folded hand would have won or tied on the full board 2,550 (29%)
-- AlwaysRaise: river bets/raises 7,034, of which with < 50% equity vs a random hand (bluff proxy) 3,621 (51%); folds 0, of which the folded hand would have won or tied on the full board 0
+- PotOdds: river bets/raises 1,400, of which with < 50% equity vs a random hand (bluff proxy) 0 (0%); folds to a bet 8,809, of which the folded hand would have won or tied on the full board 2,550 (29%); free folds 0
+- AlwaysRaise: river bets/raises 7,034, of which with < 50% equity vs a random hand (bluff proxy) 3,621 (51%); folds to a bet 0, of which the folded hand would have won or tied on the full board 0; free folds 0
 - leak: AlwaysRaiseBot (B) never folds to preflop bets (11,420 times faced): bluffing it is pointless, value-bet it
 - leak: AlwaysRaiseBot (B) never folds to flop bets (7,795 times faced): bluffing it is pointless, value-bet it
 - leak: AlwaysRaiseBot (B) never folds to turn bets (2,491 times faced): bluffing it is pointless, value-bet it
@@ -147,8 +147,8 @@ would be needed for the same precision.
 | Random | turn | 2,907 | 1,048 | 713 | 302 | 732 | 112 | 217 | 736 | 44% | 726 |
 | Random | river | 980 | 375 | 265 | 84 | 234 | 22 | 79 | 208 | 49% | 273 |
 
-- Equity: river bets/raises 208, of which with < 50% equity vs a random hand (bluff proxy) 30 (14%); folds 6,806, of which the folded hand would have won or tied on the full board 3,012 (44%)
-- Random: river bets/raises 256, of which with < 50% equity vs a random hand (bluff proxy) 137 (54%); folds 11,691, of which the folded hand would have won or tied on the full board 5,822 (50%)
+- Equity: river bets/raises 208, of which with < 50% equity vs a random hand (bluff proxy) 30 (14%); folds to a bet 6,806, of which the folded hand would have won or tied on the full board 3,012 (44%); free folds 0
+- Random: river bets/raises 256, of which with < 50% equity vs a random hand (bluff proxy) 137 (54%); folds to a bet 5,952, of which the folded hand would have won or tied on the full board 2,604 (44%); free folds 5,739
 - leak: EquityBot (A) folds 50% to flop bets (2,585 times faced): very exploitable by betting
 - leak: EquityBot (A) folds 51% to turn bets (844 times faced): very exploitable by betting
 - leak: EquityBot (A) folds 56% to river bets (256 times faced): very exploitable by betting
@@ -172,8 +172,8 @@ would be needed for the same precision.
 | CallStation | turn | 21,158 | 0 | 14,758 | 6,400 | 0 | 0 | 1,932 | 6,400 | 0% | 0 |
 | CallStation | river | 18,575 | 0 | 13,412 | 5,163 | 0 | 0 | 2,381 | 5,163 | 0% | 0 |
 
-- Equity: river bets/raises 5,163, of which with < 50% equity vs a random hand (bluff proxy) 891 (17%); folds 0, of which the folded hand would have won or tied on the full board 0
-- CallStation: river bets/raises 0, of which with < 50% equity vs a random hand (bluff proxy) 0; folds 0, of which the folded hand would have won or tied on the full board 0
+- Equity: river bets/raises 5,163, of which with < 50% equity vs a random hand (bluff proxy) 891 (17%); folds to a bet 0, of which the folded hand would have won or tied on the full board 0; free folds 0
+- CallStation: river bets/raises 0, of which with < 50% equity vs a random hand (bluff proxy) 0; folds to a bet 0, of which the folded hand would have won or tied on the full board 0; free folds 0
 - leak: EquityBot (A) never folds to preflop bets (10,000 times faced): bluffing it is pointless, value-bet it
 - leak: CallStationBot (B) never folds to preflop bets (14,812 times faced): bluffing it is pointless, value-bet it
 - leak: CallStationBot (B) never folds to flop bets (7,988 times faced): bluffing it is pointless, value-bet it
@@ -198,8 +198,8 @@ would be needed for the same precision.
 | AlwaysRaise | turn | 5,519 | 0 | 0 | 687 | 4,349 | 483 | 1,546 | 1,170 | 0% | 0 |
 | AlwaysRaise | river | 1,738 | 0 | 0 | 344 | 1,383 | 11 | 964 | 355 | 0% | 0 |
 
-- Equity: river bets/raises 355, of which with < 50% equity vs a random hand (bluff proxy) 74 (21%); folds 13,415, of which the folded hand would have won or tied on the full board 5,448 (41%)
-- AlwaysRaise: river bets/raises 1,394, of which with < 50% equity vs a random hand (bluff proxy) 725 (52%); folds 0, of which the folded hand would have won or tied on the full board 0
+- Equity: river bets/raises 355, of which with < 50% equity vs a random hand (bluff proxy) 74 (21%); folds to a bet 13,415, of which the folded hand would have won or tied on the full board 5,448 (41%); free folds 0
+- AlwaysRaise: river bets/raises 1,394, of which with < 50% equity vs a random hand (bluff proxy) 725 (52%); folds to a bet 0, of which the folded hand would have won or tied on the full board 0; free folds 0
 - leak: AlwaysRaiseBot (B) never folds to preflop bets (13,763 times faced): bluffing it is pointless, value-bet it
 - leak: AlwaysRaiseBot (B) never folds to flop bets (5,372 times faced): bluffing it is pointless, value-bet it
 - leak: AlwaysRaiseBot (B) never folds to turn bets (1,170 times faced): bluffing it is pointless, value-bet it
@@ -223,8 +223,8 @@ would be needed for the same precision.
 | PotOdds | turn | 16,121 | 1,422 | 8,599 | 2,627 | 3,045 | 428 | 898 | 4,477 | 32% | 0 |
 | PotOdds | river | 11,604 | 1,185 | 6,495 | 1,400 | 2,291 | 233 | 915 | 2,818 | 42% | 0 |
 
-- Equity: river bets/raises 2,818, of which with < 50% equity vs a random hand (bluff proxy) 451 (16%); folds 5,088, of which the folded hand would have won or tied on the full board 394 (8%)
-- PotOdds: river bets/raises 2,524, of which with < 50% equity vs a random hand (bluff proxy) 0 (0%); folds 4,961, of which the folded hand would have won or tied on the full board 445 (9%)
+- Equity: river bets/raises 2,818, of which with < 50% equity vs a random hand (bluff proxy) 451 (16%); folds to a bet 5,088, of which the folded hand would have won or tied on the full board 394 (8%); free folds 0
+- PotOdds: river bets/raises 2,524, of which with < 50% equity vs a random hand (bluff proxy) 0 (0%); folds to a bet 4,961, of which the folded hand would have won or tied on the full board 445 (9%); free folds 0
 - leak: EquityBot (A) folds 50% to river bets (2,524 times faced): very exploitable by betting
 
 ## Files
