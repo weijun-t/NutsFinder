@@ -169,3 +169,107 @@ buffers for 24 threads); the script sets `OPENBLAS_NUM_THREADS=1` (same numbers,
 (empty: nothing below the marker until the official run)
 
 <!-- OFFICIAL RESULTS BELOW: written by examples/run_phase6.py, do not edit by hand -->
+
+- date 2026-11-17; commit d8f494f; master seed 202611186; 22 processes; run time 863 s
+- model: CFRBot(model=latest.npz @ 13,200,000 it, commit 902376d, abstraction 1cad42d6a4be); sha256 4539e9c7adbc62ace90b989ea257c1ce220639f18fd8a179f8d03b712ac024f3
+
+**Primary test: CFRBot vs BayesBot = +68.2 bb/100, 95% CI [+58.0, +78.3], SE 5.2, SD/session 65.6, p = 2.02e-39, 160 sessions = 80,000 hands. Pre-registered verdict: beats.**
+
+| pairing | sessions | hands | bb/100 | 95% CI | SE | SD/session | p | design effect | learning gain (200, 250) - (0, 50) [95% CI] |
+|---|---:|---:|---:|---|---:|---:|---:|---:|---|
+| CFRBot vs BayesBot | 160 | 80,000 | +68.2 | [+58.0, +78.3] | 5.2 | 65.6 | 2.02e-39 | 0.99 | +23.7 [-5.0, +52.5] |
+| CFRBot vs EquityBot | 50 | 25,000 | +57.0 | [+39.8, +74.3] | 8.8 | 62.2 | 8.98e-11 | 0.85 | -3.0 [-63.0, +57.0] |
+| CFRBot vs PotOddsBot | 50 | 25,000 | +60.3 | [+41.9, +78.8] | 9.4 | 66.6 | 1.5e-10 | 0.82 | +26.4 [-44.9, +97.7] |
+| CFRBot vs CallStationBot | 120 | 60,000 | +223.4 | [+210.7, +236.1] | 6.5 | 71.2 | 3.59e-259 | 0.89 | +3.6 [-41.4, +48.6] |
+| CFRBot vs AlwaysRaiseBot | 200 | 100,000 | +175.6 | [+155.2, +196.0] | 10.4 | 147.3 | 8.46e-64 | 1.03 | -20.2 [-84.9, +44.4] |
+| CFRBot vs RandomBot | 130 | 65,000 | +217.5 | [+206.0, +228.9] | 5.8 | 66.7 | 1.29e-302 | 0.88 | -7.4 [-47.5, +32.7] |
+| BayesBot vs EquityBot | 50 | 25,000 | +57.4 | [+36.1, +78.6] | 10.8 | 76.7 | 1.21e-07 | 0.97 | -7.5 [-73.8, +58.8] |
+| BayesBot vs PotOddsBot | 50 | 25,000 | +392.5 | [+368.0, +417.1] | 12.5 | 88.4 | 3.47e-216 | 0.65 | -3.9 [-115.3, +107.5] |
+| BayesBot vs CallStationBot | 120 | 60,000 | +2224.1 | [+2196.2, +2252.1] | 14.3 | 156.1 | 0 | 0.95 | +1.0 [-89.2, +91.1] |
+| BayesBot vs AlwaysRaiseBot | 200 | 100,000 | +1540.2 | [+1516.2, +1564.3] | 12.3 | 173.7 | 0 | 0.94 | +35.3 [-47.4, +118.1] |
+| BayesBot vs RandomBot | 130 | 65,000 | +803.4 | [+770.7, +836.1] | 16.7 | 190.1 | 0 | 1.69 | +341.7 [+255.1, +428.4] |
+
+### CFRBot minus BayesBot against the same opponent (paired by session: same deals)
+
+| opponent | difference bb/100 | 95% CI | SE | SD/session | p |
+|---|---:|---|---:|---:|---:|
+| Equity | -0.4 | [-28.3, +27.6] | 14.3 | 100.8 | 0.979 |
+| PotOdds | -332.2 | [-363.6, -300.9] | 16.0 | 113.1 | 8.14e-96 |
+| CallStation | -2000.7 | [-2030.8, -1970.6] | 15.4 | 168.2 | 0 |
+| AlwaysRaise | -1364.6 | [-1390.7, -1338.5] | 13.3 | 188.4 | 0 |
+| Random | -586.0 | [-618.7, -553.2] | 16.7 | 190.7 | 6.91e-269 |
+
+### Breakdown of every pairing (position: CI across sessions; street: contribution to A's bb/100 by the street the hand ended on, CI across sessions, descriptive)
+
+- **CFRBot vs BayesBot**: button +76.7 [+60.4, +93.0], big blind +59.6 [+42.5, +76.8]; preflop 22% of hands -4.1 [-5.1, -3.2], flop 30% of hands -26.0 [-27.4, -24.5], turn 16% of hands -9.4 [-11.0, -7.9], river 12% of hands -4.6 [-6.1, -3.1], showdown 20% of hands +112.3 [+102.1, +122.6]
+  - A fold-to-bet: preflop 16% of 58,244, flop 65% of 24,599, turn 62% of 9,342, river 68% of 5,407
+  - leak: CFRBot (A) folds 65% to flop bets (24,599 times faced): very exploitable by betting
+  - leak: CFRBot (A) folds 62% to turn bets (9,342 times faced): very exploitable by betting
+  - leak: CFRBot (A) folds 68% to river bets (5,407 times faced): very exploitable by betting
+  - leak: BayesBot (B) folds 71% to flop bets (11,328 times faced): very exploitable by betting
+  - leak: BayesBot (B) folds 81% to turn bets (8,821 times faced): very exploitable by betting
+  - leak: BayesBot (B) folds 81% to river bets (7,230 times faced): very exploitable by betting
+- **CFRBot vs EquityBot**: button +54.6 [+22.1, +87.1], big blind +59.4 [+31.5, +87.3]; preflop 16% of hands -3.4 [-4.2, -2.6], flop 28% of hands -26.6 [-28.8, -24.4], turn 18% of hands -23.4 [-26.3, -20.5], river 13% of hands -16.2 [-20.1, -12.2], showdown 24% of hands +126.6 [+110.8, +142.5]
+  - A fold-to-bet: preflop 12% of 17,149, flop 58% of 7,716, turn 62% of 3,658, river 67% of 2,172
+  - leak: CFRBot (A) folds 58% to flop bets (7,716 times faced): very exploitable by betting
+  - leak: CFRBot (A) folds 62% to turn bets (3,658 times faced): very exploitable by betting
+  - leak: CFRBot (A) folds 67% to river bets (2,172 times faced): very exploitable by betting
+  - leak: EquityBot (B) folds 62% to flop bets (4,061 times faced): very exploitable by betting
+  - leak: EquityBot (B) folds 72% to turn bets (3,220 times faced): very exploitable by betting
+  - leak: EquityBot (B) folds 73% to river bets (2,610 times faced): very exploitable by betting
+- **CFRBot vs PotOddsBot**: button +25.5 [-9.0, +60.0], big blind +95.2 [+65.1, +125.2]; preflop 5% of hands -3.9 [-4.6, -3.3], flop 19% of hands -24.1 [-26.1, -22.1], turn 16% of hands -40.2 [-44.4, -36.0], river 16% of hands -54.5 [-61.1, -48.0], showdown 44% of hands +183.0 [+165.5, +200.6]
+  - A fold-to-bet: preflop 7% of 13,900, flop 45% of 7,164, turn 44% of 5,152, river 48% of 4,314
+- **CFRBot vs CallStationBot**: button +266.9 [+242.8, +291.1], big blind +179.9 [+163.4, +196.4]; preflop 2% of hands -0.9 [-1.0, -0.8], flop 0% of hands +0.0 [+0.0, +0.0], turn 0% of hands +0.0 [+0.0, +0.0], river 0% of hands +0.0 [+0.0, +0.0], showdown 98% of hands +224.3 [+211.6, +237.0]
+  - A fold-to-bet: preflop 4% of 30,000
+  - leak: CallStationBot (B) never folds to preflop bets (55,046 times faced): bluffing it is pointless, value-bet it
+  - leak: CallStationBot (B) never folds to flop bets (14,819 times faced): bluffing it is pointless, value-bet it
+  - leak: CallStationBot (B) never folds to turn bets (18,324 times faced): bluffing it is pointless, value-bet it
+  - leak: CallStationBot (B) never folds to river bets (20,877 times faced): bluffing it is pointless, value-bet it
+- **CFRBot vs AlwaysRaiseBot**: button +161.9 [+129.1, +194.7], big blind +189.3 [+161.7, +216.9]; preflop 49% of hands -130.2 [-132.2, -128.2], flop 25% of hands -172.7 [-176.1, -169.2], turn 10% of hands -153.2 [-156.8, -149.5], river 3% of hands -93.9 [-97.1, -90.7], showdown 12% of hands +725.5 [+707.0, +744.0]
+  - A fold-to-bet: preflop 31% of 160,614, flop 52% of 48,985, turn 50% of 20,161, river 47% of 7,141
+  - leak: CFRBot (A) folds 52% to flop bets (48,985 times faced): very exploitable by betting
+  - leak: CFRBot (A) folds 50% to turn bets (20,161 times faced): very exploitable by betting
+  - leak: AlwaysRaiseBot (B) never folds to preflop bets (88,510 times faced): bluffing it is pointless, value-bet it
+  - leak: AlwaysRaiseBot (B) never folds to flop bets (3,706 times faced): bluffing it is pointless, value-bet it
+  - leak: AlwaysRaiseBot (B) never folds to turn bets (2,815 times faced): bluffing it is pointless, value-bet it
+  - leak: AlwaysRaiseBot (B) never folds to river bets (1,168 times faced): bluffing it is pointless, value-bet it
+- **CFRBot vs RandomBot**: button +238.6 [+220.3, +257.0], big blind +196.3 [+178.3, +214.3]; preflop 67% of hands -18.7 [-20.5, -16.8], flop 21% of hands +53.4 [+48.7, +58.1], turn 7% of hands +58.5 [+53.8, +63.2], river 3% of hands +52.2 [+47.1, +57.3], showdown 3% of hands +72.0 [+63.7, +80.3]
+  - A fold-to-bet: preflop 37% of 55,386, flop 77% of 7,572, turn 65% of 2,828, river 55% of 1,115
+  - leak: CFRBot (A) folds 77% to flop bets (7,572 times faced): very exploitable by betting
+  - leak: CFRBot (A) folds 65% to turn bets (2,828 times faced): very exploitable by betting
+  - leak: CFRBot (A) folds 55% to river bets (1,115 times faced): very exploitable by betting
+  - leak: RandomBot (B) folded 15,733 times when checking was free (pure loss: it gives up its equity in the pot for nothing)
+- **BayesBot vs EquityBot**: button +43.5 [-0.2, +87.3], big blind +71.2 [+20.8, +121.7]; preflop 9% of hands -2.6 [-3.0, -2.3], flop 36% of hands -2.8 [-3.9, -1.6], turn 15% of hands -25.2 [-28.9, -21.5], river 9% of hands -14.6 [-17.5, -11.6], showdown 32% of hands +102.5 [+81.3, +123.7]
+  - A fold-to-bet: preflop 8% of 17,933, flop 55% of 8,431, turn 67% of 3,145, river 75% of 1,630
+  - leak: BayesBot (A) folds 55% to flop bets (8,431 times faced): very exploitable by betting
+  - leak: BayesBot (A) folds 67% to turn bets (3,145 times faced): very exploitable by betting
+  - leak: BayesBot (A) folds 75% to river bets (1,630 times faced): very exploitable by betting
+  - leak: EquityBot (B) folds 53% to flop bets (8,026 times faced): very exploitable by betting
+  - leak: EquityBot (B) folds 60% to turn bets (2,715 times faced): very exploitable by betting
+  - leak: EquityBot (B) folds 68% to river bets (1,481 times faced): very exploitable by betting
+- **BayesBot vs PotOddsBot**: button +408.2 [+360.3, +456.1], big blind +376.9 [+317.5, +436.3]; preflop 5% of hands -3.8 [-4.2, -3.5], flop 25% of hands +0.3 [-1.3, +2.0], turn 15% of hands -24.8 [-28.7, -20.9], river 12% of hands -31.7 [-37.3, -26.0], showdown 43% of hands +452.5 [+427.4, +477.7]
+  - A fold-to-bet: preflop 7% of 14,186, flop 52% of 6,510, turn 56% of 3,746, river 66% of 2,543
+  - leak: BayesBot (A) folds 52% to flop bets (6,510 times faced): very exploitable by betting
+  - leak: BayesBot (A) folds 56% to turn bets (3,746 times faced): very exploitable by betting
+  - leak: BayesBot (A) folds 66% to river bets (2,543 times faced): very exploitable by betting
+- **BayesBot vs CallStationBot**: button +2212.1 [+2137.0, +2287.2], big blind +2236.2 [+2162.2, +2310.1]; preflop 0% of hands +0.0 [+0.0, +0.0], flop 0% of hands +0.0 [+0.0, +0.0], turn 0% of hands +0.0 [+0.0, +0.0], river 0% of hands +0.0 [+0.0, +0.0], showdown 100% of hands +2224.1 [+2196.2, +2252.1]
+  - A fold-to-bet: preflop 0% of 30,000
+  - leak: BayesBot (A) never folds to preflop bets (30,000 times faced): bluffing it is pointless, value-bet it
+  - leak: CallStationBot (B) never folds to preflop bets (50,537 times faced): bluffing it is pointless, value-bet it
+  - leak: CallStationBot (B) never folds to flop bets (23,410 times faced): bluffing it is pointless, value-bet it
+  - leak: CallStationBot (B) never folds to turn bets (6,076 times faced): bluffing it is pointless, value-bet it
+  - leak: CallStationBot (B) never folds to river bets (5,240 times faced): bluffing it is pointless, value-bet it
+- **BayesBot vs AlwaysRaiseBot**: button +1534.8 [+1476.5, +1593.1], big blind +1545.6 [+1483.4, +1607.9]; preflop 4% of hands -4.1 [-4.2, -3.9], flop 25% of hands -74.7 [-75.5, -73.9], turn 9% of hands -84.5 [-86.2, -82.8], river 7% of hands -179.2 [-183.8, -174.6], showdown 56% of hands +1882.8 [+1858.1, +1907.4]
+  - A fold-to-bet: preflop 3% of 156,680, flop 29% of 86,954, turn 24% of 38,381, river 32% of 20,430
+  - leak: AlwaysRaiseBot (B) never folds to preflop bets (71,313 times faced): bluffing it is pointless, value-bet it
+  - leak: AlwaysRaiseBot (B) never folds to flop bets (33,545 times faced): bluffing it is pointless, value-bet it
+  - leak: AlwaysRaiseBot (B) never folds to turn bets (8,064 times faced): bluffing it is pointless, value-bet it
+  - leak: AlwaysRaiseBot (B) never folds to river bets (4,296 times faced): bluffing it is pointless, value-bet it
+- **BayesBot vs RandomBot**: button +838.6 [+790.1, +887.2], big blind +768.2 [+722.8, +813.6]; preflop 62% of hands +202.6 [+182.0, +223.2], flop 19% of hands +181.7 [+172.1, +191.4], turn 5% of hands +69.5 [+63.7, +75.3], river 2% of hands +23.1 [+19.5, +26.6], showdown 12% of hands +326.5 [+303.8, +349.2]
+  - A fold-to-bet: preflop 27% of 54,983, flop 56% of 6,324, turn 62% of 1,836, river 62% of 565
+  - leak: BayesBot (A) folds 56% to flop bets (6,324 times faced): very exploitable by betting
+  - leak: BayesBot (A) folds 62% to turn bets (1,836 times faced): very exploitable by betting
+  - leak: BayesBot (A) folds 62% to river bets (565 times faced): very exploitable by betting
+  - leak: RandomBot (B) folded 13,959 times when checking was free (pure loss: it gives up its equity in the pot for nothing)
+
+peak memory: worker working set max 145 MB, worker private max 130 MB; parent 692 MB working set
