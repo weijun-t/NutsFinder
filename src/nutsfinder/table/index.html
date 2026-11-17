@@ -1,0 +1,683 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NutsFinder Table</title>
+<style>
+:root {
+  --bg: #12161b; --panel: #1b2129; --panel2: #232b35; --line: #313b47; --text: #e6e9ee; --muted: #9aa5b1;
+  --accent: #f2c14e; --good: #4cc38a; --bad: #ef6b6b; --blue: #5aa9ff;
+  --felt1: #2f9255; --felt2: #1d6b37; --felt3: #124a26; --rail: #4a2f1c; --rail2: #2d1b0f;
+  --card-w: clamp(34px, 3.6vw, 56px);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow-x: hidden; }
+button, select, input { font: inherit; color: inherit; }
+button { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--muted); }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: #2f6fd1; border-color: #2f6fd1; }
+select, input[type=number], input[type=text] { background: #0e1217; border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
+input[type=number] { width: 7.5em; }
+kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; color: var(--muted); }
+header { display: flex; align-items: center; gap: 16px; padding: 8px 16px; background: #0b0e12; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+header h1 { font-size: 17px; margin: 0; letter-spacing: .5px; }
+header h1 span { color: var(--accent); }
+.tabs { display: flex; gap: 4px; }
+.tabs button { border-radius: 16px; padding: 4px 14px; }
+.tabs button.on { background: var(--accent); color: #111; border-color: var(--accent); font-weight: 600; }
+#status { margin-left: auto; color: var(--muted); font-size: 13px; }
+#status.err { color: var(--bad); }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 12px; padding: 12px 16px; }
+@media (max-width: 1100px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; }
+.toolbar label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.score { display: flex; gap: 14px; color: var(--muted); }
+.score b { color: var(--text); }
+.pos { color: var(--good) !important; } .neg { color: var(--bad) !important; }
+.peek { color: var(--accent); }
+.peek input { accent-color: var(--accent); }
+.progress { width: 140px; height: 8px; background: #0e1217; border-radius: 4px; overflow: hidden; border: 1px solid var(--line); }
+.progress div { height: 100%; background: var(--blue); width: 0; transition: width .2s; }
+
+/* ---- the table ---- */
+.table-wrap { position: relative; width: 100%; max-width: 1000px; margin: 0 auto; padding: calc(var(--card-w) * 1.4 + 22px) 80px 78px; }
+.table { position: relative; width: 100%; aspect-ratio: 2.05 / 1; }
+.rail { position: absolute; inset: 0; border-radius: 50% / 50%; background: linear-gradient(180deg, var(--rail), var(--rail2));
+  box-shadow: 0 18px 40px rgba(0,0,0,.6), inset 0 2px 3px rgba(255,255,255,.15); }
+.felt { position: absolute; inset: 16px; border-radius: 50% / 50%;
+  background: radial-gradient(ellipse at 50% 42%, var(--felt1) 0%, var(--felt2) 55%, var(--felt3) 100%);
+  box-shadow: inset 0 0 40px rgba(0,0,0,.55); border: 2px solid rgba(255,255,255,.08); }
+.felt::after { content: "NUTSFINDER"; position: absolute; left: 50%; top: 73%; transform: translate(-50%, -50%);
+  font-weight: 800; letter-spacing: 6px; color: rgba(255,255,255,.07); font-size: clamp(14px, 2.4vw, 28px); }
+.center { position: absolute; left: 50%; top: 47%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.pot { background: rgba(0,0,0,.35); padding: 2px 12px; border-radius: 12px; font-weight: 600; white-space: nowrap; }
+.pot small { color: #cfe; font-weight: 400; opacity: .8; }
+.board { display: flex; gap: 5px; }
+.banner { background: rgba(0,0,0,.6); border: 1px solid var(--accent); color: var(--accent); padding: 3px 14px; border-radius: 14px; font-weight: 600; white-space: nowrap; max-width: 100%; }
+.seat { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 4px; z-index: 2; }
+.seat .hole { display: flex; gap: 3px; min-height: calc(var(--card-w) * 1.4); }
+.plate { min-width: 150px; background: rgba(12,16,20,.92); border: 2px solid #3a4552; border-radius: 10px; padding: 4px 12px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,.5); position: relative; }
+.plate .nm { font-weight: 600; white-space: nowrap; }
+.plate .st { color: var(--accent); font-variant-numeric: tabular-nums; }
+.plate .tag { font-size: 11px; color: var(--muted); }
+.seat.act .plate { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(242,193,78,.25), 0 0 18px rgba(242,193,78,.55); }
+.seat.folded { opacity: .45; }
+.seat.win .plate { border-color: var(--good); box-shadow: 0 0 18px rgba(76,195,138,.6); }
+.thinking { font-size: 12px; color: var(--accent); }
+.thinking::after { content: ""; animation: dots 1.2s steps(4) infinite; }
+@keyframes dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
+.bet { position: absolute; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 5px; background: rgba(0,0,0,.35); padding: 1px 8px 1px 3px; border-radius: 12px; font-weight: 600; font-size: 13px; z-index: 1; white-space: nowrap; }
+.chip { width: 16px; height: 16px; border-radius: 50%; background: radial-gradient(circle, #fff 0 25%, #d33 26% 60%, #fff 61% 70%, #d33 71%); box-shadow: 0 1px 2px rgba(0,0,0,.6); }
+.dealer { position: absolute; transform: translate(-50%, -50%); width: 24px; height: 24px; border-radius: 50%; background: #fafafa; color: #111; font-weight: 800; font-size: 12px; display: grid; place-items: center; box-shadow: 0 2px 4px rgba(0,0,0,.6); z-index: 1; }
+.lastact { position: absolute; top: -12px; right: -10px; background: var(--blue); color: #fff; font-size: 11px; padding: 0 6px; border-radius: 8px; white-space: nowrap; }
+
+/* ---- cards ---- */
+.card { width: var(--card-w); height: calc(var(--card-w) * 1.4); border-radius: 6px; background: #fdfdfd; color: #1a1a1a; position: relative;
+  box-shadow: 0 2px 5px rgba(0,0,0,.5); font-weight: 700; user-select: none; flex: none; }
+.card .r { position: absolute; left: 4px; top: 1px; font-size: calc(var(--card-w) * .36); line-height: 1.1; }
+.card .s1 { position: absolute; left: 4px; top: calc(var(--card-w) * .38); font-size: calc(var(--card-w) * .28); }
+.card .s { position: absolute; right: 4px; bottom: 0; font-size: calc(var(--card-w) * .55); line-height: 1; }
+.card.red { color: #d0202e; }
+.card.back { background: repeating-linear-gradient(45deg, #23458f 0 4px, #1a356f 4px 8px); border: 3px solid #fff; }
+.card.slot { background: rgba(0,0,0,.15); box-shadow: none; border: 1px dashed rgba(255,255,255,.18); }
+.card.mini { --card-w: 22px; display: inline-block; vertical-align: middle; margin-right: 1px; }
+.card.mini .r { font-size: 11px; left: 2px; } .card.mini .s1 { display: none; } .card.mini .s { font-size: 11px; right: 2px; }
+.cards-inline { white-space: nowrap; font-weight: 600; }
+.cards-inline .red { color: #ff7a7a; }
+
+/* ---- action bar / stepper ---- */
+.actionbar, .stepper { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.actionbar .big { font-weight: 700; min-width: 110px; padding: 9px 14px; }
+.btn-fold { background: #5a2427; border-color: #7b3135; }
+.btn-call { background: #234f7d; border-color: #2f6aa6; }
+.btn-raise { background: #6a5313; border-color: #8f711c; }
+.sizer { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sizer input[type=range] { width: 200px; accent-color: var(--accent); }
+.presets button { padding: 4px 8px; font-size: 12px; }
+.msg { color: var(--muted); }
+.msg.err { color: var(--bad); }
+
+/* ---- side panels ---- */
+aside { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-width: 0; }
+.panel h3 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.panel h3 .r { margin-left: auto; text-transform: none; letter-spacing: 0; }
+#reasoning { max-height: 52vh; overflow: auto; }
+#log { max-height: 30vh; overflow: auto; font: 12.5px/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace; }
+#log .deal { color: var(--accent); margin-top: 3px; }
+#log .err { color: var(--bad); }
+#log .result { color: var(--good); font-weight: 600; }
+.hidden-note { color: var(--muted); font-style: italic; padding: 6px 0; }
+.dec { border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; margin-bottom: 7px; background: #161c23; }
+.dec.cur { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.dec .hd { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; font-size: 13px; }
+.dec .hd .st { text-transform: uppercase; font-weight: 700; color: var(--blue); font-size: 12px; }
+.dec .hd .ch { margin-left: auto; font-weight: 700; color: var(--accent); }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 1px 10px; font-size: 12.5px; margin: 4px 0; }
+.kv span:nth-child(odd) { color: var(--muted); }
+.bars { width: 100%; border-collapse: collapse; font-size: 12.5px; margin: 3px 0; }
+.bars td { padding: 1px 4px; white-space: nowrap; }
+.bars td.barc { width: 45%; }
+.bars .bar { height: 9px; background: var(--blue); border-radius: 3px; min-width: 1px; }
+.bars .bar.neg { background: var(--bad); }
+.bars tr.chosen td { color: var(--accent); font-weight: 700; }
+.bars tr.chosen .bar { background: var(--accent); }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+details { font-size: 12px; margin-top: 3px; }
+details summary { cursor: pointer; color: var(--muted); }
+pre { white-space: pre-wrap; word-break: break-word; margin: 3px 0; font: 11.5px/1.4 ui-monospace, Consolas, monospace; color: #c9d1d9; }
+.badge { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 8px; background: var(--panel2); border: 1px solid var(--line); }
+.badge.warn { border-color: var(--accent); color: var(--accent); }
+.peekbanner { background: rgba(242,193,78,.12); border: 1px solid var(--accent); color: var(--accent); border-radius: 6px; padding: 3px 8px; margin-bottom: 6px; font-size: 12px; }
+#hands { max-height: 26vh; overflow: auto; }
+#hands table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+#hands th { position: sticky; top: 0; background: var(--panel); text-align: left; color: var(--muted); font-weight: 500; }
+#hands td, #hands th { padding: 2px 6px; }
+#hands tr.row { cursor: pointer; }
+#hands tr.row:hover { background: var(--panel2); }
+#hands tr.sel { background: #2a3442; }
+.recent { display: flex; flex-wrap: wrap; gap: 3px; }
+.recent span { font-size: 11px; padding: 0 5px; border-radius: 6px; background: var(--panel2); }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Nuts<span>Finder</span> table</h1>
+  <div class="tabs" role="tablist">
+    <button id="tabPlay" class="on" role="tab">Play vs bot</button>
+    <button id="tabReplay" role="tab">Replay bots</button>
+  </div>
+  <div id="status">connecting...</div>
+</header>
+
+<div class="layout">
+  <main>
+    <!-- PLAY toolbar -->
+    <div class="toolbar" id="playBar">
+      <label>Opponent <select id="botSel"></select></label>
+      <label>Seed <input id="seed" type="text" inputmode="numeric" placeholder="random" size="9"></label>
+      <button id="newGame" class="primary">New game</button>
+      <div class="score" id="score"></div>
+      <label class="peek" title="Shows the bot's equity/strategy while the hand is still running. This is peeking: you see how strong it thinks its hand is."><input type="checkbox" id="live"> Show reasoning live (peeking)</label>
+    </div>
+    <!-- REPLAY toolbar -->
+    <div class="toolbar" id="replayBar" hidden>
+      <label>Bot A <select id="botA"></select></label>
+      <label>vs Bot B <select id="botB"></select></label>
+      <label>Seed <input id="rseed" type="text" inputmode="numeric" placeholder="random" size="9"></label>
+      <label>Hands <input id="rhands" type="number" min="1" max="200" value="20"></label>
+      <button id="runReplay" class="primary">Run</button>
+      <button id="cancelReplay" disabled>Cancel</button>
+      <div class="progress"><div id="rprog"></div></div>
+      <span id="rinfo" class="msg"></span>
+      <button id="exportReplay" disabled title="Download every hand and every decision as JSON">Export JSON</button>
+    </div>
+
+    <div class="table-wrap"><div class="table" id="table">
+      <div class="rail"></div><div class="felt"></div>
+      <div class="center">
+        <div class="pot" id="pot">&nbsp;</div>
+        <div class="board" id="board"></div>
+        <div class="banner" id="banner" hidden></div>
+      </div>
+      <div id="seats"></div>
+    </div></div>
+
+    <!-- PLAY action bar -->
+    <div class="actionbar" id="actionBar">
+      <button class="big btn-fold" id="bFold" disabled>Fold <kbd>F</kbd></button>
+      <button class="big btn-call" id="bCall" disabled>Check <kbd>C</kbd></button>
+      <div class="sizer" id="sizer">
+        <input type="range" id="slider" min="0" max="0" step="1" disabled>
+        <input type="number" id="amount" min="0" max="0" step="1" disabled>
+        <span class="presets" id="presets"></span>
+        <button class="big btn-raise" id="bRaise" disabled>Raise <kbd>R</kbd></button>
+      </div>
+      <button id="nextHand" class="primary" hidden>Next hand <kbd>N</kbd></button>
+      <button id="showCards" hidden title="Reveal the bot's hole cards for this finished hand (they were not shown at the table)">Show bot cards</button>
+      <button id="endSession" hidden title="Stop this game and reveal its seed (or random secret) so the deals can be checked">End session &amp; show seed</button>
+      <span class="msg" id="msg"></span>
+    </div>
+
+    <!-- REPLAY stepper -->
+    <div class="stepper" id="stepper" hidden>
+      <button id="sFirst" title="First step (Home)">&#x23EE;</button>
+      <button id="sPrev" title="Previous step (Left arrow)">&#x25C0;</button>
+      <button id="sPlay" title="Autoplay (Space)">&#x25B6; Play</button>
+      <button id="sNext" title="Next step (Right arrow)">&#x25B6;&#xFE0E;|</button>
+      <button id="sLast" title="Last step (End)">&#x23ED;</button>
+      <label class="msg">Speed <select id="speed"><option value="2000">0.5x</option><option value="1000" selected>1x</option><option value="500">2x</option><option value="250">4x</option></select></label>
+      <span id="stepInfo" class="msg"></span>
+      <button id="hPrev" title="Previous hand (Up arrow)">Prev hand</button>
+      <button id="hNext" title="Next hand (Down arrow)">Next hand</button>
+      <label class="msg"><input type="checkbox" id="autoNext"> continue into next hand</label>
+    </div>
+  </main>
+
+  <aside>
+    <div class="panel" id="handsPanel" hidden>
+      <h3>Hands <span class="r" id="rtotal"></span></h3>
+      <div id="hands"></div>
+    </div>
+    <div class="panel">
+      <h3>How the bot thought <span class="r"><button id="botCardsBtn2" hidden></button></span></h3>
+      <div id="reasoning"><div class="hidden-note">Start a game to see the bot's decisions.</div></div>
+    </div>
+    <div class="panel">
+      <h3>Action log</h3>
+      <div id="log"></div>
+    </div>
+    <div class="panel" id="modelPanel" hidden>
+      <h3>What BayesBot has learned about you</h3>
+      <pre id="model"></pre>
+    </div>
+    <div class="panel" id="recentPanel" hidden>
+      <h3>Recent hands (your net)</h3>
+      <div class="recent" id="recent"></div>
+    </div>
+  </aside>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const S = { sid: null, mode: "play", bots: [], play: null, busy: false,
+            replay: null, hand: null, frame: 0, timer: null, poll: null, selHand: -1 };
+const SUITS = { s: "♠", h: "♥", d: "♦", c: "♣" };
+const fmt = (n) => (n == null ? "-" : Number(n).toLocaleString("en-US"));
+const sgn = (n, d = 0) => (n > 0 ? "+" : "") + Number(n).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+const pct = (x, d = 1) => (x == null ? "-" : (100 * x).toFixed(d) + "%");
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+// ---------- API ----------
+async function api(method, path, body) {
+  const opt = { method, headers: {} };
+  if (body !== undefined) { opt.headers["Content-Type"] = "application/json"; opt.body = JSON.stringify(body); }
+  let res;
+  try { res = await fetch(path, opt); } catch (e) { throw new Error("server not reachable (is it still running?)"); }
+  let data = null;
+  try { data = await res.json(); } catch (e) { /* non-JSON */ }
+  if (!res.ok) {
+    const err = new Error((data && data.error) || ("HTTP " + res.status));
+    err.status = res.status; throw err;
+  }
+  return data;
+}
+async function ensureSession() {
+  if (!S.sid) S.sid = (await api("POST", "/api/session", {})).session;
+  return S.sid;
+}
+async function withSession(fn) {
+  await ensureSession();
+  try { return await fn(); }
+  catch (e) {
+    if (e.status === 404 && /session/.test(e.message)) { S.sid = null; await ensureSession(); status("session expired; started a new one", true); }
+    throw e;
+  }
+}
+function status(text, err = false) { const el = $("status"); el.textContent = text; el.className = err ? "err" : ""; }
+
+// ---------- cards ----------
+function cardHTML(c, extra = "") {
+  if (!c) return `<div class="card back ${extra}"></div>`;
+  const r = c[0] === "T" ? "10" : c[0], s = c[1], red = s === "h" || s === "d";
+  const sym = SUITS[s] + "︎";
+  return `<div class="card ${red ? "red" : ""} ${extra}" title="${esc(c)}"><span class="r">${r}</span><span class="s1">${sym}</span><span class="s">${sym}</span></div>`;
+}
+function cardsInline(list) {
+  if (!list || !list.length) return '<span class="cards-inline">-</span>';
+  return '<span class="cards-inline">' + list.map((c) => {
+    const red = c[1] === "h" || c[1] === "d";
+    return `<span class="${red ? "red" : ""}">${c[0] === "T" ? "10" : c[0]}${SUITS[c[1]]}︎</span>`;
+  }).join(" ") + "</span>";
+}
+function splitCards(text) { const out = []; for (let i = 0; i + 1 < (text || "").length; i += 2) out.push(text.slice(i, i + 2)); return out; }
+
+// ---------- table (any number of seats; hero at the bottom) ----------
+function seatGeom(i, n, hero) {
+  const a = Math.PI / 2 + (2 * Math.PI * (i - hero)) / n;   // screen angle: PI/2 = bottom
+  const c = Math.cos(a), s = Math.sin(a);
+  return { x: 50 + 50 * c, y: 50 + 50 * s, bx: 50 + 30 * c, by: 50 + 27 * s,
+           dx: 50 + 33 * Math.cos(a + 0.42), dy: 50 + 32 * Math.sin(a + 0.42) };
+}
+function renderTable(t, opt) {
+  const seatsEl = $("seats");
+  if (!t) { seatsEl.innerHTML = ""; $("board").innerHTML = Array(5).fill('<div class="card slot"></div>').join(""); $("pot").innerHTML = "&nbsp;"; $("banner").hidden = true; return; }
+  const n = t.seats.length, hero = opt.hero ?? 0;
+  let html = "";
+  t.seats.forEach((p, i) => {
+    const g = seatGeom(i, n, hero);
+    const cls = ["seat"];
+    if (p.to_act && !t.hand_over) cls.push("act");
+    if (p.folded) cls.push("folded");
+    if (opt.winners && opt.winners.includes(p.seat)) cls.push("win");
+    let hole = "";
+    if (p.cards) hole = p.cards.map((c) => cardHTML(c)).join("");
+    else hole = Array(p.hidden_cards).fill(cardHTML(null)).join("");
+    const think = opt.thinking === p.seat ? '<div class="thinking">thinking</div>' : "";
+    const last = opt.lastAct && opt.lastAct.seat === p.seat ? `<div class="lastact">${esc(opt.lastAct.text)}</div>` : "";
+    const tag = [p.blind, p.all_in ? "ALL-IN" : "", p.folded ? "folded" : "", p.is_bot ? "" : ""].filter(Boolean).join(" · ");
+    const handName = opt.handNames && opt.handNames[p.seat] ? `<div class="tag">${esc(opt.handNames[p.seat])}</div>` : "";
+    html += `<div class="${cls.join(" ")}" style="left:${g.x}%;top:${g.y}%">
+      <div class="hole">${hole}</div>
+      <div class="plate">${last}<div class="nm">${esc(p.name)}</div><div class="st">${fmt(p.stack)}</div><div class="tag">${esc(tag)}</div>${handName}${think}</div></div>`;
+    if (p.bet > 0) html += `<div class="bet" style="left:${g.bx}%;top:${g.by}%"><span class="chip"></span>${fmt(p.bet)}</div>`;
+    if (p.button) html += `<div class="dealer" style="left:${g.dx}%;top:${g.dy}%" title="dealer button">D</div>`;
+  });
+  seatsEl.innerHTML = html;
+  const b = t.board.map((c) => cardHTML(c));
+  while (b.length < 5) b.push('<div class="card slot"></div>');
+  $("board").innerHTML = b.join("");
+  const potLine = `Pot ${fmt(t.pot)}` + (t.pot !== t.pot_center && t.pot_center > 0 ? ` <small>(${fmt(t.pot_center)} in the middle)</small>` : "");
+  $("pot").innerHTML = potLine + ` <small>· blinds ${t.small_blind}/${t.big_blind}</small>`;
+  const banner = $("banner");
+  if (opt.banner) { banner.textContent = opt.banner; banner.hidden = false; } else banner.hidden = true;
+}
+
+// ---------- reasoning ----------
+function barRows(rows, chosen, fmtVal, signed) {
+  const max = Math.max(1e-9, ...rows.map((r) => Math.abs(r[1])));
+  return '<table class="bars">' + rows.map(([name, v]) => {
+    const w = (100 * Math.abs(v)) / max;
+    return `<tr class="${name === chosen ? "chosen" : ""}"><td>${esc(name)}</td><td class="num">${fmtVal(v)}</td><td class="barc"><div class="bar ${signed && v < 0 ? "neg" : ""}" style="width:${w}%"></div></td></tr>`;
+  }).join("") + "</table>";
+}
+function decisionHTML(e, names, current) {
+  const d = e.detail || {};
+  const holeTxt = e.hole_cards ? cardsInline(e.hole_cards) : '<span class="badge" title="click Show bot cards after the hand">cards hidden</span>';
+  const who = names && names[e.seat] ? `<b>${esc(names[e.seat])}</b>` : "";
+  let h = `<div class="dec ${current ? "cur" : ""}" data-i="${e.index}"><div class="hd"><span class="st">${esc(e.street)}</span>${who} ${holeTxt}
+    <span>board ${cardsInline(e.board)}</span><span class="msg">pot ${fmt(e.pot)}${e.to_call ? ", to call " + fmt(e.to_call) : ""}</span>
+    <span class="ch">&rarr; ${esc(e.action)}</span></div>`;
+  if (d.kind === "ev") {
+    h += `<div class="kv"><span>Equity</span><span>${pct(d.equity)} &plusmn; ${pct(d.std_error)} vs top ${pct(d.villain_range, 0)} of hands</span>
+      <span>Pot odds</span><span>${d.pot_odds == null ? "not facing a bet" : pct(d.pot_odds) + " needed to call"}</span></div>`;
+    h += '<div class="msg" style="font-size:12px">EV per action (chips, one-street model):</div>';
+    h += barRows(d.evs || [], d.action, (v) => sgn(v, 1), true);
+    if (d.notes && d.notes.length) h += `<details ${current ? "open" : ""}><summary>model notes (${d.notes.length})</summary><pre>${esc(d.notes.join("\n"))}</pre></details>`;
+  } else if (d.kind === "cfr") {
+    h += `<div class="kv"><span>Mode</span><span><span class="badge ${d.mode !== "blueprint" ? "warn" : ""}">${esc(d.mode)}</span> node ${esc(d.node)}</span>
+      <span>Path</span><span>${esc(d.path || "(root)")}</span>
+      <span>Bucket</span><span>${d.bucket == null ? "-" : esc(d.bucket)}${d.reached === false && d.strategy && d.strategy.length ? ' <span class="badge warn">never reached in training: uniform</span>' : ""}</span>
+      <span>E[HS]</span><span>${pct(d.ehs)} vs a random hand</span>
+      <span>Pot odds</span><span>${d.pot_odds == null ? "not facing a bet" : pct(d.pot_odds)}</span>
+      ${(d.translations || []).length ? `<span>Translated</span><span>${d.translations.map(esc).join("<br>")}</span>` : ""}
+      <span>Chosen</span><span>${esc(d.chosen)} &rarr; ${esc(e.action)} (${(1000 * (d.seconds || 0)).toFixed(1)} ms)</span></div>`;
+    if (d.strategy && d.strategy.length) { h += '<div class="msg" style="font-size:12px">Blueprint strategy at this info set:</div>' + barRows(d.strategy, d.chosen, (v) => pct(v), false); }
+    if (d.regrets && d.regrets.length) h += `<details><summary>average regrets (not EVs)</summary>${barRows(d.regrets, d.chosen, (v) => sgn(v, 2), true)}</details>`;
+    if (d.notes && d.notes.length) h += `<details open><summary>notes</summary><pre>${esc(d.notes.join("\n"))}</pre></details>`;
+  } else {
+    h += `<div class="msg" style="font-size:12.5px">${esc(d.text || "")}</div>`;
+  }
+  if (d.text && d.kind !== "rule") h += `<details><summary>raw debug record</summary><pre>${esc(d.text)}</pre></details>`;
+  return h + "</div>";
+}
+function renderReasoning(list, names, opt = {}) {
+  const el = $("reasoning");
+  if (opt.hiddenMsg) { el.innerHTML = `<div class="hidden-note">${opt.hiddenMsg}</div>`; return; }
+  if (!list || !list.length) { el.innerHTML = `<div class="hidden-note">${opt.empty || "No bot decisions yet."}</div>`; return; }
+  let h = opt.peek ? '<div class="peekbanner">Live reasoning is ON: you are peeking at the bot\'s thinking during the hand.</div>' : "";
+  h += list.map((e) => decisionHTML(e, names, opt.current === e.index)).join("");
+  el.innerHTML = h;
+  if (opt.current != null) { const cur = el.querySelector(".dec.cur"); if (cur) cur.scrollIntoView({ block: "nearest" }); }
+  else if (opt.scrollEnd) el.scrollTop = el.scrollHeight;
+}
+function renderLog(lines, upto) {
+  const el = $("log");
+  const show = upto == null ? lines : lines.slice(0, upto);
+  el.innerHTML = show.map((l) => `<div class="${l.deal ? "deal" : ""} ${l.street === "error" ? "err" : ""} ${l.street === "result" ? "result" : ""}">${esc(l.text)}</div>`).join("");
+  el.scrollTop = el.scrollHeight;
+}
+
+// ---------- bots ----------
+async function loadBots() {
+  const data = await api("GET", "/api/bots");
+  S.bots = data.bots;
+  for (const id of ["botSel", "botA", "botB"]) {
+    const sel = $(id); sel.innerHTML = "";
+    for (const b of S.bots) {
+      const o = document.createElement("option");
+      o.value = b.key; o.textContent = b.name + (b.available ? "" : " (unavailable)");
+      o.disabled = !b.available; o.title = b.available ? b.description : b.unavailable_reason;
+      sel.appendChild(o);
+    }
+  }
+  const pick = (k) => S.bots.find((b) => b.key === k && b.available) ? k : "bayes";
+  $("botSel").value = pick("bayes"); $("botA").value = pick("cfr"); $("botB").value = "bayes";
+  $("rhands").max = data.max_replay_hands;
+  const cfr = S.bots.find((b) => b.key === "cfr");
+  status(cfr && !cfr.available ? "CFRBot unavailable: " + cfr.unavailable_reason : "ready");
+}
+
+// ---------- PLAY ----------
+function playNames(p) { return p && p.table ? p.table.seats.map((s) => s.name) : ["You", "Bot"]; }
+function renderPlay() {
+  const p = S.play;
+  const bar = $("actionBar");
+  if (!p) { renderTable(null, {}); return; }
+  const t = p.table, over = p.status === "hand_over" || p.status === "error";
+  const lastBot = [...(p.log || [])].reverse().find((l) => l.seat === 1 && !l.deal);
+  renderTable(t, {
+    hero: p.hero_seat, thinking: S.busy && !over ? 1 : null,
+    banner: p.result ? p.result.headline : (p.error ? "hand abandoned (bot error)" : null),
+    winners: p.result ? p.result.winners : null, handNames: p.result ? p.result.hand_names : null,
+    lastAct: !over && lastBot && lastBot.street === (t && t.street) ? { seat: 1, text: lastBot.text.replace(p.bot.name + " ", "") } : null,
+  });
+  // score
+  const sc = p.score;
+  $("score").innerHTML = `<span>vs <b>${esc(p.bot.name)}</b></span><span>hands <b>${sc.hands}</b></span>
+    <span>you <b class="${sc.chips > 0 ? "pos" : sc.chips < 0 ? "neg" : ""}">${sgn(sc.chips)} chips</b></span>
+    <span><b class="${sc.bb > 0 ? "pos" : sc.bb < 0 ? "neg" : ""}">${sgn(sc.bb, 1)} bb</b></span>
+    ${sc.bb_per_100 == null ? "" : `<span>${sgn(sc.bb_per_100, 0)} bb/100</span>`}
+    ${sc.peeked_hands ? `<span title="hands where you did not peek at the live reasoning">clean <b class="${sc.clean_bb > 0 ? "pos" : sc.clean_bb < 0 ? "neg" : ""}">${sgn(sc.clean_bb, 1)} bb</b> / ${sc.clean_hands} hands (peeked ${sc.peeked_hands})</span>` : ""}
+    ${p.known_deck ? '<span class="badge warn" title="You chose the seed, so the deals are reproducible: in principle you could know the deck">known deck</span>' : ""}
+    ${p.ended ? `<span class="msg">session ended · ${p.session_seed != null ? "seed " + esc(p.session_seed) : "secret " + esc(p.session_secret)}</span>` : ""}`;
+  // action bar
+  const L = p.legal, mine = !!L && !S.busy;
+  $("bFold").disabled = !mine;
+  $("bCall").disabled = !mine;
+  $("bCall").innerHTML = L && L.can_call ? `Call ${fmt(L.call_amount)} <kbd>C</kbd>` : "Check <kbd>C</kbd>";
+  const canAgg = mine && (L.can_bet || L.can_raise);
+  for (const id of ["slider", "amount", "bRaise"]) $(id).disabled = !canAgg;
+  $("sizer").style.visibility = over || (L && !(L.can_bet || L.can_raise)) ? "hidden" : "visible";
+  if (L && (L.can_bet || L.can_raise)) {
+    const sl = $("slider"), am = $("amount");
+    sl.min = am.min = L.min_to; sl.max = am.max = L.max_to;
+    const def = L.presets.find((x) => x.label === "½ pot") || L.presets[0];
+    sl.value = am.value = def ? def.to : L.min_to;
+    $("presets").innerHTML = L.presets.map((x) => `<button data-to="${x.to}" title="${x.label === "All-in" ? "all-in" : (L.can_bet ? "bet " : "raise to ") + fmt(x.to)}">${esc(x.label)}</button>`).join("");
+    updateRaiseLabel();
+  } else $("presets").innerHTML = "";
+  $("nextHand").hidden = !over || p.ended;
+  $("nextHand").disabled = S.busy;
+  $("endSession").hidden = !(over || p.status === "no_hand") || p.ended;
+  $("endSession").disabled = S.busy;
+  $("newGame").disabled = S.busy;
+  $("showCards").hidden = !(p.status === "hand_over" && !p.bot_cards_visible);
+  $("msg").className = "msg";
+  $("msg").textContent = S.busy ? `${p.bot.name} is thinking...` : p.status === "your_turn" ? "Your turn." : p.status === "error" ? p.error : over ? (p.bot_cards_revealed_on_request ? "Bot cards shown on request (not shown at the table)." : "") : "";
+  if (p.status === "error") $("msg").className = "msg err";
+  // panels
+  const names = playNames(p);
+  if (p.reasoning_hidden) renderReasoning(null, names, { hiddenMsg: "Hidden until the hand is over. (Tick <b>Show reasoning live</b> to peek.)" });
+  else renderReasoning(p.reasoning, names, { peek: p.live && !over, scrollEnd: true, empty: "The bot made no decisions this hand." });
+  renderLog(p.log || []);
+  $("modelPanel").hidden = !p.bot_model; $("model").textContent = (p.bot_model || []).join("\n");
+  $("recentPanel").hidden = !(p.recent && p.recent.length);
+  $("recent").innerHTML = (p.recent || []).slice(-40).map((r) => `<span class="${r.net > 0 ? "pos" : r.net < 0 ? "neg" : ""}" title="hand ${r.hand}: ${esc(r.headline)}">${sgn(r.net_bb, 1)}${r.peeked ? "*" : ""}</span>`).join("");
+  $("live").checked = !!p.live;
+}
+function updateRaiseLabel() {
+  const L = S.play && S.play.legal; if (!L) return;
+  const v = Number($("amount").value);
+  const allin = v === L.max_to ? " (all-in)" : "";
+  $("bRaise").innerHTML = (L.can_bet ? "Bet " : "Raise to ") + fmt(v) + allin + " <kbd>R</kbd>";
+}
+async function playCall(path, body, optimistic) {
+  if (S.busy) return;
+  S.busy = true;
+  if (optimistic) $("msg").textContent = optimistic;
+  renderPlayBusy();
+  try {
+    S.play = await withSession(() => api("POST", path, { session: S.sid, ...body }));
+    status("ready");
+  } catch (e) {
+    $("msg").className = "msg err"; $("msg").textContent = e.message; status(e.message, true);
+    S.busy = false;
+    if (S.play) try { S.play = await api("GET", "/api/play/state?session=" + encodeURIComponent(S.sid)); } catch (_) {}
+    renderPlay(); $("msg").className = "msg err"; $("msg").textContent = e.message;
+    return;
+  }
+  S.busy = false;
+  renderPlay();
+}
+function renderPlayBusy() {
+  for (const id of ["bFold", "bCall", "bRaise", "slider", "amount", "nextHand", "newGame"]) $(id).disabled = true;
+  if (S.play && S.play.table) {
+    const seats = document.querySelectorAll(".seat");
+    if (seats[1] && !seats[1].querySelector(".thinking")) seats[1].querySelector(".plate").insertAdjacentHTML("beforeend", '<div class="thinking">thinking</div>');
+  }
+}
+async function newGame() {
+  const seed = $("seed").value.trim();
+  if (seed && !/^\d+$/.test(seed)) { status("seed must be a whole number (or empty for random)", true); return; }
+  await playCall("/api/play/new", { bot: $("botSel").value, seed: seed === "" ? null : seed }, "Dealing...");
+  $("newGame").disabled = false;
+  if (S.mode === "play" && S.play) renderPlay();
+}
+function act(kind) {
+  const L = S.play && S.play.legal; if (!L || S.busy) return;
+  if (kind === "call") kind = L.can_call ? "call" : "check";
+  let amount = null, text;
+  if (kind === "raise") {
+    if (!(L.can_bet || L.can_raise)) return;
+    amount = Math.round(Number($("amount").value));
+    if (!Number.isFinite(amount) || amount < L.min_to || amount > L.max_to) { $("msg").className = "msg err"; $("msg").textContent = `Amount must be between ${fmt(L.min_to)} and ${fmt(L.max_to)}.`; return; }
+    kind = L.can_bet ? "bet" : "raise";
+    text = (L.can_bet ? "You bet " : "You raise to ") + fmt(amount);
+  } else text = { fold: "You fold", check: "You check", call: "You call " + fmt(L.call_amount) }[kind];
+  playCall("/api/play/act", { action: kind, amount, expected_step: S.play.step }, text + ". " + S.play.bot.name + " is thinking...");
+}
+
+// ---------- REPLAY ----------
+function stopTimer() { if (S.timer) { clearInterval(S.timer); S.timer = null; } $("sPlay").innerHTML = "&#x25B6; Play"; }
+async function runReplay() {
+  stopTimer();
+  const seed = $("rseed").value.trim();
+  if (seed && !/^\d+$/.test(seed)) { status("seed must be a whole number (or empty for random)", true); return; }
+  const hands = Number($("rhands").value);
+  if (!Number.isInteger(hands) || hands < 1 || hands > Number($("rhands").max)) { status(`hands must be 1..${$("rhands").max}`, true); return; }
+  try {
+    S.replay = await withSession(() => api("POST", "/api/replay/start", { session: S.sid, bot_a: $("botA").value, bot_b: $("botB").value, seed: seed === "" ? null : seed, hands }));
+    S.hand = null; S.selHand = -1; S.frame = 0;
+    renderReplayList(); pollReplay();
+  } catch (e) { status(e.message, true); }
+}
+function pollReplay() {
+  clearTimeout(S.poll);
+  const tick = async () => {
+    try { S.replay = await api("GET", "/api/replay/status?session=" + encodeURIComponent(S.sid)); }
+    catch (e) { status(e.message, true); return; }
+    renderReplayList();
+    if (S.selHand < 0 && S.replay.done > 0) loadHand(0);
+    if (S.replay.status === "running") S.poll = setTimeout(tick, 400);
+  };
+  tick();
+}
+function renderReplayList() {
+  const r = S.replay; if (!r) return;
+  const running = r.status === "running";
+  $("cancelReplay").disabled = !running; $("exportReplay").disabled = !r.done;
+  $("rprog").style.width = (100 * r.done / r.n_hands) + "%";
+  $("rinfo").textContent = `${r.done}/${r.n_hands} hands · ${r.status}${r.error ? ": " + r.error : ""} · seed ${r.seed} · ${r.elapsed.toFixed(1)} s`;
+  if (r.status === "error") status("replay error: " + r.error, true);
+  const [a, b] = r.bots.map((x) => x.name);
+  const bb100 = r.done ? (100 * r.total_bb[0] / r.done) : 0;
+  $("rtotal").innerHTML = `${esc(a)}: <b class="${r.total[0] > 0 ? "pos" : r.total[0] < 0 ? "neg" : ""}">${sgn(r.total_bb[0], 1)} bb</b> (${sgn(bb100, 0)} bb/100)`;
+  let h = `<table><tr><th>#</th><th>button</th><th>${esc(a)} net</th><th>end</th><th>result</th></tr>`;
+  for (const s of r.hands) {
+    h += `<tr class="row ${s.index === S.selHand ? "sel" : ""}" data-h="${s.index}"><td>${s.index + 1}</td><td>${s.button === 0 ? "A" : "B"}</td>
+      <td class="num ${s.net[0] > 0 ? "pos" : s.net[0] < 0 ? "neg" : ""}">${sgn(s.net_bb[0], 1)} bb</td><td>${s.showdown ? "showdown" : esc(s.street) + " fold"}</td><td class="msg">${esc(s.headline)}</td></tr>`;
+  }
+  $("hands").innerHTML = h + "</table>";
+}
+async function loadHand(i) {
+  if (!S.replay || i < 0 || i >= S.replay.done) return;
+  try { S.hand = await api("GET", `/api/replay/hand?session=${encodeURIComponent(S.sid)}&index=${i}`); }
+  catch (e) { status(e.message, true); return; }
+  S.selHand = i; S.frame = 0;
+  renderReplayList(); renderFrame();
+  const row = document.querySelector(`#hands tr[data-h="${i}"]`); if (row) row.scrollIntoView({ block: "nearest" });
+}
+function renderFrame() {
+  const H = S.hand; if (!H) { renderTable(null, {}); return; }
+  const f = H.frames[S.frame], last = S.frame === H.frames.length - 1;
+  const ev = f.event;
+  renderTable(f.table, {
+    hero: 0, banner: f.result ? f.result.headline : null,
+    winners: f.result ? f.result.winners : null, handNames: f.result ? f.result.hand_names : null,
+    lastAct: ev.type === "action" ? { seat: ev.seat, text: ev.text.replace(H.names[ev.seat] + " ", "") } : null,
+  });
+  $("stepInfo").textContent = `hand ${H.index + 1} · step ${S.frame + 1}/${H.frames.length} · ${ev.text}`;
+  // decisions taken so far; the current one highlighted
+  let upto = -1;
+  for (let k = 0; k <= S.frame; k++) if (H.frames[k].decision != null) upto = H.frames[k].decision;
+  const list = H.reasoning.filter((e) => e.index <= upto);
+  renderReasoning(list, H.names, { current: f.decision, empty: "No decisions yet: step forward." });
+  renderLog(H.log, f.lines);
+  $("sFirst").disabled = $("sPrev").disabled = S.frame === 0;
+  $("sNext").disabled = $("sLast").disabled = last;
+  $("hPrev").disabled = H.index === 0; $("hNext").disabled = !S.replay || H.index >= S.replay.done - 1;
+}
+function step(d) {
+  const H = S.hand; if (!H) return;
+  const n = H.frames.length;
+  S.frame = Math.max(0, Math.min(n - 1, d === "first" ? 0 : d === "last" ? n - 1 : S.frame + d));
+  renderFrame();
+}
+function togglePlay() {
+  if (S.timer) { stopTimer(); return; }
+  if (!S.hand) return;
+  $("sPlay").innerHTML = "&#x23F8; Pause";
+  S.timer = setInterval(async () => {
+    const H = S.hand;
+    if (S.frame < H.frames.length - 1) { step(1); return; }
+    if ($("autoNext").checked && S.replay && H.index < S.replay.done - 1) { await loadHand(H.index + 1); return; }
+    stopTimer();
+  }, Number($("speed").value));
+}
+
+// ---------- modes & events ----------
+function setMode(m) {
+  S.mode = m; stopTimer();
+  $("tabPlay").classList.toggle("on", m === "play"); $("tabReplay").classList.toggle("on", m === "replay");
+  $("playBar").hidden = $("actionBar").hidden = m !== "play";
+  $("replayBar").hidden = $("stepper").hidden = $("handsPanel").hidden = m !== "replay";
+  $("modelPanel").hidden = $("recentPanel").hidden = true;
+  if (m === "play") { if (S.play) renderPlay(); else { renderTable(null, {}); renderReasoning(null, null, { empty: "Choose an opponent and press New game." }); renderLog([]); } }
+  else { if (S.hand) renderFrame(); else { renderTable(null, {}); renderReasoning(null, null, { empty: "Choose two bots and press Run." }); renderLog([]); } renderReplayList(); }
+}
+$("tabPlay").onclick = () => setMode("play");
+$("tabReplay").onclick = () => setMode("replay");
+$("newGame").onclick = newGame;
+$("bFold").onclick = () => act("fold");
+$("bCall").onclick = () => act("call");
+$("bRaise").onclick = () => act("raise");
+$("nextHand").onclick = () => playCall("/api/play/next", { expected_step: S.play && S.play.step }, "Dealing...");
+$("endSession").onclick = () => playCall("/api/play/end", {});
+$("showCards").onclick = () => playCall("/api/play/reveal", {});
+$("live").onchange = (e) => { if (!S.play) { e.target.checked = false; return; } playCall("/api/play/live", { on: e.target.checked }); };
+$("slider").oninput = () => { $("amount").value = $("slider").value; updateRaiseLabel(); };
+$("amount").oninput = () => { $("slider").value = $("amount").value; updateRaiseLabel(); };
+$("amount").onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); act("raise"); } };
+$("presets").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; $("amount").value = $("slider").value = b.dataset.to; updateRaiseLabel(); };
+$("runReplay").onclick = runReplay;
+$("cancelReplay").onclick = async () => { try { S.replay = await api("POST", "/api/replay/cancel", { session: S.sid }); renderReplayList(); } catch (e) { status(e.message, true); } };
+$("exportReplay").onclick = () => { window.location.href = "/api/replay/export?session=" + encodeURIComponent(S.sid); };
+$("hands").onclick = (e) => { const tr = e.target.closest("tr[data-h]"); if (tr) { stopTimer(); loadHand(Number(tr.dataset.h)); } };
+$("sFirst").onclick = () => step("first"); $("sLast").onclick = () => step("last");
+$("sPrev").onclick = () => step(-1); $("sNext").onclick = () => step(1);
+$("sPlay").onclick = togglePlay;
+$("speed").onchange = () => { if (S.timer) { stopTimer(); togglePlay(); } };
+$("hPrev").onclick = () => { stopTimer(); if (S.hand) loadHand(S.hand.index - 1); };
+$("hNext").onclick = () => { stopTimer(); if (S.hand) loadHand(S.hand.index + 1); };
+document.addEventListener("keydown", (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) && e.target.type !== "checkbox" && e.target.type !== "range";
+  if (typing) return;
+  const k = e.key.toLowerCase();
+  if (S.mode === "play") {
+    if (k === "f") act("fold");
+    else if (k === "c" || k === "x") act("call");
+    else if (k === "r" || k === "b") act("raise");
+    else if (k === "n" && !$("nextHand").hidden && !S.busy) $("nextHand").click();
+  } else {
+    if (k === "arrowright") step(1); else if (k === "arrowleft") step(-1);
+    else if (k === "home") step("first"); else if (k === "end") step("last");
+    else if (k === " ") { e.preventDefault(); togglePlay(); }
+    else if (k === "arrowdown") { e.preventDefault(); $("hNext").click(); } else if (k === "arrowup") { e.preventDefault(); $("hPrev").click(); }
+  }
+});
+
+(async function init() {
+  setMode("play");
+  try { await loadBots(); await ensureSession(); }
+  catch (e) { status(e.message, true); return; }
+  // Optional autostart from the URL: #play=bayes&seed=1  or  #replay=cfr,bayes&seed=7&hands=20
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (h.get("seed")) { $("seed").value = h.get("seed"); $("rseed").value = h.get("seed"); }
+  if (h.get("play")) { $("botSel").value = h.get("play"); newGame(); }
+  else if (h.get("replay")) {
+    const [a, b] = h.get("replay").split(",");
+    $("botA").value = a; $("botB").value = b || a;
+    if (h.get("hands")) $("rhands").value = h.get("hands");
+    setMode("replay"); runReplay();
+  }
+})();
+</script>
+</body>
+</html>

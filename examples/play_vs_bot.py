@@ -7,6 +7,12 @@ Type f (fold), x (check), c (call), or a number to bet/raise TO that many
 chips (e.g. 300). Type r to see what BayesBot has learned about you so far
 (BayesBot only). Type q to quit. Blinds are 50/100 and stacks reset to
 10,000 every hand. You are seat 0; the button alternates.
+
+Prefer a real table? ``.venv\\Scripts\\python examples\\poker_table.py`` serves a
+browser version (http://127.0.0.1:8765/) with cards, chips and a bet
+slider, every bot including CFRBot, a "how the bot thought" panel after each
+hand, and a replay mode for bot-vs-bot hands. This terminal version stays as
+the dependency-free, keyboard-only option.
 """
 
 import argparse
