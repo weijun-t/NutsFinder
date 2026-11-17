@@ -20,6 +20,10 @@ import nutsfinder.bots as bots
 from nutsfinder.engine.bot import Bot
 from nutsfinder.eval.match import duplicate_match, plain_match
 
+# CFRBot() with no model plays the untrained uniform blueprint and warns about it; that is expected
+# here (this test is about seeding, not strength).
+pytestmark = pytest.mark.filterwarnings("ignore::nutsfinder.bots.cfr_bot.UntrainedBlueprintWarning")
+
 ALL_BOTS = [
     obj
     for name in bots.__all__

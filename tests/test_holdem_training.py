@@ -198,3 +198,57 @@ def test_checkpoint_fingerprint_guards_tree_and_bucket_changes(tmp_path):
     save_tables(tmp_path / "old.npz", regrets, ssum, old)
     with pytest.warns(UserWarning, match="no abstraction fingerprint"):
         Blueprint.load(tmp_path / "old.npz")
+
+
+# --- examples/train_holdem.py: refuses a dirty work tree ------------------------------------
+
+
+def _train_cli():
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "examples" / "train_holdem.py"
+    spec = importlib.util.spec_from_file_location("train_holdem_cli", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_train_cli_exits_on_a_dirty_tree(tmp_path):
+    import shutil
+    import subprocess
+
+    if shutil.which("git") is None:
+        pytest.skip("git not available")
+    cli = _train_cli()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args):
+        subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+
+    git("init", "-q")
+    git("config", "user.email", "test@example.invalid")
+    git("config", "user.name", "test")
+    (repo / ".gitignore").write_text("models/\n")
+    (repo / "a.py").write_text("x = 1\n")
+    git("add", ".")
+    git("commit", "-q", "-m", "init")
+    head = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=repo, check=True,
+                          capture_output=True, text=True).stdout.strip()
+    (repo / "models").mkdir()
+    (repo / "models" / "latest.npz").write_bytes(b"ignored")  # gitignored files do not count
+    assert cli.commit_hash(root=repo) == head
+    (repo / "a.py").write_text("x = 2\n")  # a modified tracked file
+    with pytest.raises(SystemExit, match="uncommitted changes"):
+        cli.commit_hash(root=repo)
+    assert cli.commit_hash(allow_dirty=True, root=repo) == head + " + uncommitted changes"
+    git("checkout", "--", "a.py")
+    (repo / "new.py").write_text("y = 1\n")  # an untracked (not ignored) file is dirty too
+    with pytest.raises(SystemExit):
+        cli.commit_hash(root=repo)
+    not_a_repo = tmp_path / "plain"
+    not_a_repo.mkdir()
+    with pytest.raises(SystemExit, match="cannot read the git state"):
+        cli.commit_hash(root=not_a_repo)
+    assert cli.commit_hash(allow_dirty=True, root=not_a_repo) == "unknown"

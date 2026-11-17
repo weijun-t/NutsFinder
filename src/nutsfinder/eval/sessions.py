@@ -149,6 +149,8 @@ class Session:
             game 2 of pair 0, then pair 1, ...).
         pair_results: A's net in bb per pair (sum of the pair's two hands).
         games: the hand logs (empty if ``keep_games=False``).
+        bot_a_desc, bot_b_desc: ``repr`` of the bots (see
+            :func:`~nutsfinder.eval.match.describe_bot`); ``""`` if unknown.
     """
 
     index: int
@@ -158,6 +160,8 @@ class Session:
     hand_results: tuple[float, ...]
     pair_results: tuple[float, ...]
     games: tuple[Game, ...]
+    bot_a_desc: str = ""
+    bot_b_desc: str = ""
 
     @property
     def n_pairs(self) -> int:
@@ -202,6 +206,8 @@ def play_session(
         hand_results=tuple(g.a_net_bb for g in m.games),
         pair_results=m.unit_results,
         games=m.games if keep_games else (),
+        bot_a_desc=m.bot_a_desc,
+        bot_b_desc=m.bot_b_desc,
     )
 
 
@@ -224,6 +230,8 @@ class SessionMatchResult:
     pairs_per_session: int
     sessions: tuple[Session, ...]
     stats: Summary
+    bot_a_desc: str = ""
+    bot_b_desc: str = ""
 
     kind = "session_duplicate"
     unit = "session"
@@ -360,6 +368,8 @@ def combine_sessions(
         pairs_per_session=pairs_per_session,
         sessions=tuple(sessions),
         stats=summarize([s.total_bb for s in sessions], hands_per_unit=hands),
+        bot_a_desc=sessions[0].bot_a_desc,
+        bot_b_desc=sessions[0].bot_b_desc,
     )
 
 

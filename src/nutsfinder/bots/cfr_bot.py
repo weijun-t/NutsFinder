@@ -32,18 +32,75 @@ Each decision has three steps.
 Off-tree situations and their fallbacks (it must never crash or act illegally)
 -----------------------------------------------------------------------------
 The real game and the abstract walk can disagree. Each case is resolved by
-a fixed rule and reported in the debug log as the decision's ``mode``:
+a fixed rule and reported in the debug log as the decision's ``mode``
+(``blueprint`` when the blueprint decides, else ``passive-ahead`` or
+``terminal``).
 
-- ``passive-ahead``: a real bet was read as *passive* (a check or call),
-  so the abstract street (or hand) is over while the real game still asks
-  us to respond to that bet. Rule: **call** (check if possible). That is
-  what translation.py prescribes: in the abstract history the opponent
-  put in nothing, and the bet is small (below the smallest abstract
-  size) so the call is cheap. Our real call is not an abstract action.
-  The same rule applies when the abstract node is a showdown / all-in
-  terminal while the real hand goes on (e.g. a real bet of 95% of the
-  stack read as all-in and called; the real stacks still have chips): in
-  the abstraction we are committed to showdown, so we check / call down.
+**Real bets read as passive.** Postflop the abstraction only has pot and
+all-in, so the pseudo-harmonic mapping reads a bet of ``x`` pot (``x < 1``)
+as a check/call with probability ``P = (1 - x) / (1 + x)`` (1/3 for half
+pot, 1/2 for a third of pot). In that branch the abstract history says the
+opponent put in nothing, while the real game makes us answer ``x``. Three
+rules handle it.
+
+- *Remap when passive would close the abstract street.* If the passive
+  edge leads out of the street (a street transition or a terminal: e.g.
+  we checked, they bet half pot, "check" would make it check-check), the
+  bet is read instead as the **smallest non-all-in bet edge** of that node
+  (deterministic, cached like every translation), and the node reached is
+  marked *soft*. The blueprint then answers with fold / call / raise and
+  the walk stays on the tree. At a soft node a sampled **fold is
+  overridden by the equity rule** below (call if the hand is not
+  dominated). Without that override the remap would be the
+  ``below="smallest"`` rule, which a min-bettor exploits: a bet of 1% pot
+  would be answered with the pot-bet defence (folding maybe half the
+  range), winning the pot about half the time for a 1% risk. With it, a
+  bet of ``x`` pot is folded only by hands whose equity is at most
+  ``x / (1 + 2x)``, i.e. almost never for tiny bets.
+- *Abstract check facing a real bet* (the passive edge did not close the
+  street, e.g. the big blind leads small and we are at our own node after
+  "check"): when the blueprint samples check but the real game has a bet
+  to call, the equity rule decides between call and fold.
+- *No bet edge to remap onto, abstract street already closed, or the
+  abstract hand is over* (``passive-ahead`` / ``terminal``; e.g. a real bet
+  of 95% of the stack read as all-in and called, real chips behind): check
+  if checking is free, else the equity rule. We never bet in this mode.
+
+**The equity rule.** Facing a real call of ``c`` into a pot ``P`` (the pot
+already includes the bet), the call is worth it against an opponent
+holding a random hand iff our equity ``e > c / (P + c)``. We use ``e`` =
+E[HS] against a random hand (exact, the same number the buckets use;
+preflop the 169-class equity vs a random hand), call iff ``e > c/(P + c)``
+and fold otherwise. Why *vs random* and why it is the right size of change:
+
+1. *It only removes dominated calls.* A betting range is at least as strong
+   as a random hand (bets correlate with strength), so our equity against
+   it is at most ``e``: if ``e <= c/(P+c)`` the call loses even against a
+   random holding. (Implied odds of later streets are ignored; the hands
+   concerned are near the bottom of the range, where they are small.)
+2. *It cannot be farmed with small bets.* For a bet of ``x`` pot,
+   ``c/(P+c) = x / (1 + 2x)``. On the river E[HS] *is* the percentile of
+   our hand among random hands, so against a range spread like a random
+   one we fold a fraction ``x/(1+2x)`` of it, below ``1 - MDF = x/(1+x)``
+   (the most a defender may fold before pure bluffs of ``x`` profit). A 1%
+   pot min-bet folds out ~1% of hands (the ones that beat nothing).
+3. *Its cost.* The old rule (call 100% in the passive branch) gave exactly
+   the bluffing-game defence ``1/(1+x)`` in aggregate (that is how the
+   pseudo-harmonic ``P`` is derived, see translation.py), but called with
+   the wrong hands. Folding dominated hands in that branch raises the
+   aggregate fold rate by at most ``P * x/(1+2x)``, which is at most about
+   0.10 of the range (near ``x = 0.3``) if our range is spread like a
+   random one. That is a small concession to a perfectly polarised bluffer
+   in exchange for not paying off value bets with air, which is what the
+   bots in this repo mostly bet.
+
+The rule draws no random numbers (so the generator stream is unchanged)
+and depends only on our cards and public chips. A stronger reference range
+than "random" (e.g. a value-weighted betting range) would fold more and
+risk over-folding; it is left for a later tier.
+
+**Other cases.**
+
 - **Abstract street still open, real street closed** (e.g. our abstract
   raise became a real call because the real rules forbid raising after a
   short all-in): the walk closes the abstract street with passive
@@ -67,10 +124,21 @@ a fixed rule and reported in the debug log as the decision's ``mode``:
 - **Untrained info sets** (zero strategy mass): played uniformly, the
   solver's convention; flagged ``reached=False`` in the debug log.
 
-Randomness: one ``numpy`` PCG64 generator, seeded in the constructor and by
-:meth:`reseed`, used for the translations and the action draws (one
-uniform each), in the order the decisions happen. Same seed, same model,
-same opponent -> identical hands.
+Seats and self-play: the walk is kept **per real seat** (a dict keyed by
+seat), so one instance playing both seats (self-play with a single
+object) keeps a stable walk and stable translations for each seat.
+
+Randomness: one ``numpy`` PCG64 generator, seeded in the constructor
+(default seed 0, so ``play_match([CFRBot(model), ...])`` is reproducible
+without match-level reseeding; pass ``seed=None`` explicitly for OS
+entropy) and by :meth:`reseed`, used for the translations and the action
+draws (one uniform each), in the order the decisions happen. Same seed,
+same model, same opponent -> identical hands.
+
+Trained or not: ``CFRBot()`` (``model=None``) plays the untrained uniform
+blueprint and warns (:class:`UntrainedBlueprintWarning`). An evaluation
+script should check :attr:`CFRBot.is_trained` or call
+:func:`require_trained` on the bot (or a bot built from its factory).
 
 Debug (``debug=True``): every decision is stored in :attr:`last_decision`
 (a :class:`CFRDecision`) and logged at DEBUG level: node and abstract path,
@@ -85,6 +153,7 @@ from __future__ import annotations
 
 import logging
 import time
+import warnings
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -97,16 +166,33 @@ from nutsfinder.abstraction.cards import CardAbstraction
 from nutsfinder.abstraction.config import AbstractionConfig
 from nutsfinder.abstraction.strength import card_ids
 from nutsfinder.abstraction.tree import CHANCE, TERMINAL, BettingTree, SizeLabel
-from nutsfinder.bots.common import aggressive_action, cards_text, check_turn, label
+from nutsfinder.bots.common import aggressive_action, cards_text, check_turn, effective_pot, label, pot_odds
 from nutsfinder.engine.actions import Action, Bet, Call, Check, Fold, Raise
 from nutsfinder.engine.betting import ActionRecord, PublicState, Street
 from nutsfinder.engine.bot import Bot, HandSummary
 from nutsfinder.engine.cards import Card
 from nutsfinder.engine.preflop import equity_vs_top, hand_class
 
-__all__ = ["CFRBot", "CFRDecision", "preload_turn_tables"]
+__all__ = ["CFRBot", "CFRDecision", "UntrainedBlueprintWarning", "preload_turn_tables", "require_trained"]
 
 log = logging.getLogger(__name__)
+
+
+class UntrainedBlueprintWarning(UserWarning):
+    """``CFRBot`` was built without a model and plays the untrained uniform blueprint."""
+
+
+def require_trained(bot: Bot, min_iterations: int = 1) -> None:
+    """Raise ``ValueError`` unless ``bot`` is a CFRBot with a trained blueprint (for eval scripts).
+
+    Trained means: not ``Blueprint.uniform()`` and at least ``min_iterations``
+    training iterations recorded in the checkpoint meta.
+    """
+    if not isinstance(bot, CFRBot):
+        raise ValueError(f"{bot!r} is not a CFRBot")
+    if not bot.is_trained or bot.blueprint.iteration < min_iterations:
+        raise ValueError(f"{bot!r} is not trained (iteration {bot.blueprint.iteration:,}, "
+                         f"need >= {min_iterations:,})")
 
 
 @lru_cache(maxsize=4)
@@ -184,6 +270,7 @@ class _Walk:
     records: tuple = ()                 # ... and the records themselves (new-hand detection)
     over: bool = False                  # a real fold the abstraction could not follow
     own: dict[int, tuple[int, int]] = field(default_factory=dict)  # record index -> (node, edge) we chose
+    soft: set[int] = field(default_factory=set)  # nodes reached by a remapped passive read (module doc)
     translations: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
@@ -195,9 +282,11 @@ class CFRBot(Bot):
         model: a checkpoint path (``.npz`` written by ``examples/train_holdem.py``),
             a :class:`~nutsfinder.abstraction.blueprint.Blueprint`, or ``None``
             for the *untrained* (uniform) blueprint: what ``CFRBot()`` with no
-            arguments plays, so match code can build it without a file. Use
+            arguments plays, so match code can build it without a file (it
+            warns with :class:`UntrainedBlueprintWarning`). Use
             ``functools.partial(CFRBot, model=path)`` as a match factory.
         seed: seeds the bot's generator (translations and action draws).
+            Default 0 (reproducible); ``None`` means OS entropy.
         debug: record each decision in :attr:`last_decision` and log it.
         time_budget: seconds per decision. A decision is a table lookup
             plus at most one exact E[HS] table (~10-50 ms for a new turn
@@ -206,13 +295,16 @@ class CFRBot(Bot):
         below: translation rule below the smallest size (see translation.py).
     """
 
-    def __init__(self, model: str | Path | Blueprint | None = None, seed: int | None = None, *,
+    def __init__(self, model: str | Path | Blueprint | None = None, seed: int | None = 0, *,
                  debug: bool = False, time_budget: float | None = None,
                  below: tr.BelowRule = "pseudo_harmonic") -> None:
         if isinstance(model, Blueprint):
             self.blueprint = model
         elif model is None:
             self.blueprint = _uniform()
+            warnings.warn("CFRBot(model=None) plays the UNTRAINED uniform blueprint; pass a checkpoint "
+                          "(e.g. models/holdem_official/latest.npz) for real play",
+                          UntrainedBlueprintWarning, stacklevel=2)
         else:
             self.blueprint = Blueprint.load(model)
         self.tree: BettingTree = self.blueprint.tree
@@ -221,7 +313,8 @@ class CFRBot(Bot):
         self.time_budget = time_budget
         self.below = below
         self._rng = np.random.Generator(np.random.PCG64(seed))
-        self._walk: _Walk | None = None
+        self._walks: dict[int, _Walk] = {}  # one walk per real seat (self-play with one instance)
+        self._walk: _Walk | None = None     # the walk of the seat of the current decision
         self.last_decision: CFRDecision | None = None
 
     def reseed(self, seed: int) -> None:
@@ -229,8 +322,14 @@ class CFRBot(Bot):
         self._rng = np.random.Generator(np.random.PCG64(seed))
 
     def end_hand(self, summary: HandSummary) -> None:
-        """Forget the hand's walk and translations (nothing is learned across hands)."""
+        """Forget the hand's walks and translations (nothing is learned across hands)."""
+        self._walks.clear()
         self._walk = None
+
+    @property
+    def is_trained(self) -> bool:
+        """False for the uniform blueprint and for tables with no recorded training iterations."""
+        return self.blueprint.is_trained
 
     def __repr__(self) -> str:
         return f"CFRBot(model={self.blueprint.describe()})"
@@ -288,8 +387,24 @@ class CFRBot(Bot):
             return self._passive_edge(n)
         res = tr.translate_bet(pre, to, sizes, self._rng, below=self.below)
         j = self._passive_edge(n) if res.passive else edge_of[res.index]
-        w.translations.append(f"#{i} to {to}: {res} -> {_edge_text(self.tree.actions(n)[j], labels[j])}")
+        text = f"#{i} to {to}: {res} -> {_edge_text(self.tree.actions(n)[j], labels[j])}"
+        if res.passive and self._closes_street(n, j):
+            # Passive would end the abstract street/hand while the real game makes the other seat
+            # answer a bet: read it as the smallest non-all-in bet edge and mark the node soft
+            # (a blueprint fold there is checked against the equity rule; module doc).
+            bets = [k for k, labs in enumerate(labels) if labs and all(x.kind != "all_in" for x in labs)]
+            if bets:
+                j = bets[0]  # bet edges are in increasing size order
+                w.soft.add(self.tree.child_ids(n)[j])
+                text += f", which closes the abstract street: remapped to {_edge_text(self.tree.actions(n)[j], labels[j])}"
+        w.translations.append(text)
         return j
+
+    def _closes_street(self, n: int, j: int) -> bool:
+        """Whether edge j of node n leaves the street (street transition or terminal)."""
+        t = self.tree
+        child = t.child_ids(n)[j]
+        return not (t.player[child] in (0, 1) and t.street[child] == t.street[n])
 
     def _follow(self, w: _Walk, state: PublicState, i: int, rec: ActionRecord) -> None:
         """Advance the walk over real history record i."""
@@ -323,10 +438,11 @@ class CFRBot(Bot):
                     self._step(w, self._translate(w, state, i, to))
 
     def _sync(self, state: PublicState) -> _Walk:
-        key = (state.button, state.starting_stacks, state.blinds, state.seat)
-        w = self._walk
+        key = (state.button, state.starting_stacks, state.blinds)
+        w = self._walks.get(state.seat)
         if w is None or w.key != key or state.history[:w.done] != w.records:
             w = _Walk(key)  # a new hand (end_hand normally resets; this also catches bots used without it)
+        self._walks[state.seat] = w
         self._walk = w
         for i in range(w.done, len(state.history)):
             self._follow(w, state, i, state.history[i])
@@ -386,6 +502,13 @@ class CFRBot(Bot):
             w.own[len(state.history)] = (n, j)
             edge_names = [_edge_text(a, labs) for a, labs in zip(t.actions(n), t.edge_labels(n))]
             chosen = edge_names[j]
+            edge = t.actions(n)[j]
+            if isinstance(edge, Fold) and n in w.soft and legal.can_call:
+                action, why = self._equity_rule(state, hole_cards)
+                notes.append(f"soft node (remapped passive read): blueprint fold -> equity rule: {why}")
+            elif isinstance(edge, Check) and not legal.can_check:
+                action, why = self._equity_rule(state, hole_cards)
+                notes.append(f"abstract check but a real bet to call: equity rule: {why}")
             if self.debug:
                 strategy = tuple(zip(edge_names, (float(p) for p in probs)))
                 reached = self.blueprint.was_reached(n, bucket)
@@ -393,8 +516,12 @@ class CFRBot(Bot):
                 regrets = None if r is None else tuple(zip(edge_names, (float(x) for x in r)))
         else:
             mode = "terminal" if (w.over or t.player[w.node] == TERMINAL) else "passive-ahead"
-            action = Check() if legal.can_check else Call()
-            chosen = "fallback check/call"
+            if legal.can_check:
+                action, chosen = Check(), "fallback check"
+            else:
+                action, why = self._equity_rule(state, hole_cards)
+                chosen = f"fallback {type(action).__name__.lower()}"
+                notes.append(f"equity rule: {why}")
         elapsed = time.perf_counter() - start
         if self.time_budget is not None and elapsed > self.time_budget:
             log.warning("CFRBot decision took %.3f s (budget %.3f s)", elapsed, self.time_budget)
@@ -404,22 +531,42 @@ class CFRBot(Bot):
             log.debug("%s", self.last_decision)
         return action
 
+    def _equity(self, state: PublicState, hole_cards: tuple[Card, ...]) -> float:
+        """Our equity against a random hand: E[HS] postflop, the class equity preflop (deterministic)."""
+        if state.street == Street.PREFLOP:
+            return equity_vs_top(hand_class(hole_cards), 1.0)[0]
+        return self.cards.ehs(card_ids(hole_cards), card_ids(state.board))
+
+    def _equity_rule(self, state: PublicState, hole_cards: tuple[Card, ...]) -> tuple[Action, str]:
+        """Facing a real bet off the blueprint: call iff equity vs a random hand > c / (P_eff + c), else fold.
+
+        ``P_eff`` is the effective pot (:func:`~nutsfinder.bots.common.effective_pot`): when our
+        call is all-in for less than the bet, the opponent's unmatched excess is refunded, so it
+        is not part of what we can win. Example: 500 behind facing a 3,000 bet into 200 gives
+        ``P = 3,200`` but ``P_eff = 700``, so the call needs 500 / 1,200 = 41.7%, not 13.5%.
+        """
+        legal = state.legal
+        assert legal is not None and legal.can_call
+        c = legal.call_amount
+        odds = pot_odds(c, effective_pot(state))
+        e = self._equity(state, hole_cards)
+        if e > odds:
+            return Call(), f"E[HS] {e:.3f} > pot odds {odds:.3f}: call"
+        return Fold(), f"E[HS] {e:.3f} <= pot odds {odds:.3f}: fold"
+
     def _decision(self, state: PublicState, hole_cards: tuple[Card, ...], w: _Walk, mode: str,
                   bucket: int | None, strategy, regrets, reached: bool, chosen: str, action: Action,
                   elapsed: float, notes: list[str]) -> CFRDecision:
         legal = state.legal
         assert legal is not None
-        if state.street == Street.PREFLOP:
-            ehs = equity_vs_top(hand_class(hole_cards), 1.0)[0]
-        else:
-            ehs = self.cards.ehs(card_ids(hole_cards), card_ids(state.board))
+        ehs = self._equity(state, hole_cards)
         call = legal.call_amount
         path = " ".join(_edge_text(a, ()) if not isinstance(a, (Bet, Raise)) else label(a)
                         for a in self.tree.path(w.node))
         return CFRDecision(
             street=state.street.name.lower(), hole_cards=cards_text(hole_cards), board=cards_text(state.board),
             mode=mode, node=w.node, path=path, bucket=bucket, ehs=ehs, pot=state.pot, to_call=call,
-            pot_odds=call / (state.pot + call) if legal.can_call else None,
+            pot_odds=pot_odds(call, effective_pot(state)) if legal.can_call else None,
             translations=tuple(w.translations), strategy=strategy, regrets=regrets, reached=reached,
             chosen=chosen, action=action, seconds=elapsed, notes=tuple(w.notes + notes))
 

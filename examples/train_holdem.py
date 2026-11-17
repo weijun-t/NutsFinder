@@ -32,6 +32,13 @@ Outputs (``--out``, default ``models/holdem``; ``models/`` is gitignored):
 - ``train_log.jsonl``: one JSON line per checkpoint (speed, info sets
   touched, convergence proxies, commit).
 
+Clean tree required: a checkpoint records the commit it was trained at, so
+the script exits if the work tree has uncommitted changes (``git status
+--porcelain``: modified, staged or untracked files; gitignored files such as
+``models/`` do not count) or if git cannot tell, for new runs and for
+``--resume`` alike. ``--allow-dirty`` overrides it; the commit is then
+recorded as ``<hash> + uncommitted changes`` (or ``unknown``).
+
 Turn tables: every worker preloads all 16,432 exact turn E[HS] tables from
 ``--turn-tables`` (default ``models/turn_ehs.npz``, ~14 MB); without them
 MCCFR runs ~25x slower while it fills them lazily. If the file is missing it
@@ -63,15 +70,35 @@ DEFAULT_OUT = ROOT / "models" / "holdem"
 DEFAULT_TURNS = ROOT / "models" / "turn_ehs.npz"
 
 
-def commit_hash() -> str:
+def git_state(root: Path = ROOT) -> tuple[str, str | None]:
+    """``(short HEAD, porcelain status)``; ``("unknown", None)`` if git is unavailable.
+
+    The status excludes gitignored files (``git status`` never lists them).
+    """
     try:
-        head = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
+        head = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=root,
                               capture_output=True, text=True, check=True).stdout.strip()
-        dirty = subprocess.run(["git", "status", "--porcelain"], cwd=ROOT,
+        dirty = subprocess.run(["git", "status", "--porcelain"], cwd=root,
                                capture_output=True, text=True, check=True).stdout.strip()
     except (OSError, subprocess.CalledProcessError):
+        return "unknown", None
+    return head, dirty
+
+
+def commit_hash(allow_dirty: bool = False, root: Path = ROOT) -> str:
+    """The commit to record; exits (``SystemExit``) on a dirty or unknown tree unless ``allow_dirty``."""
+    head, dirty = git_state(root)
+    if dirty is None:
+        if not allow_dirty:
+            sys.exit("cannot read the git state of the work tree: refusing to train an unidentifiable "
+                     "blueprint (use --allow-dirty to override)")
         return "unknown"
-    return head + (" + uncommitted changes" if dirty else "")
+    if dirty:
+        if not allow_dirty:
+            sys.exit("the work tree has uncommitted changes (git status --porcelain):\n" + dirty
+                     + "\ncommit them first, or pass --allow-dirty")
+        return head + " + uncommitted changes"
+    return head
 
 
 def ensure_turn_tables(path: Path, workers: int) -> None:
@@ -109,10 +136,13 @@ def main() -> None:
     ap.add_argument("--keep", type=int, default=3)
     ap.add_argument("--milestone-every", type=int, default=10, help="also keep every n-th checkpoint")
     ap.add_argument("--turn-tables", type=Path, default=DEFAULT_TURNS)
+    ap.add_argument("--allow-dirty", action="store_true",
+                    help="train even if the work tree has uncommitted changes (recorded in the meta)")
     args = ap.parse_args()
     if args.iterations is None and args.max_minutes is None:
         ap.error("give --iterations and/or --max-minutes")
 
+    commit = commit_hash(args.allow_dirty)  # before any work: a dirty tree exits here
     turns = args.turn_tables.resolve()
     if args.resume is not None:
         out = args.out or args.resume.resolve().parent
@@ -123,7 +153,6 @@ def main() -> None:
                             linear_until=args.linear_until)
     out.mkdir(parents=True, exist_ok=True)
     ensure_turn_tables(turns, args.workers if opts is None else opts.workers)
-    commit = commit_hash()
 
     if args.resume is not None:
         trainer = Trainer.resume(args.resume, turns)

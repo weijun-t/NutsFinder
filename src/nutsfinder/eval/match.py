@@ -100,7 +100,7 @@ from nutsfinder.engine.hand_log import HandLog
 from nutsfinder.engine.runner import play_hand
 from nutsfinder.eval.stats import Summary, required_units, summarize
 
-__all__ = ["BotFactory", "Game", "MatchResult", "plain_match", "duplicate_match", "unit_seeds"]
+__all__ = ["BotFactory", "Game", "MatchResult", "describe_bot", "plain_match", "duplicate_match", "unit_seeds"]
 
 BotFactory = Callable[[], Bot]
 """Anything that builds a fresh bot with no arguments, e.g. ``RandomBot``."""
@@ -135,12 +135,16 @@ class MatchResult:
 
     Attributes:
         kind: ``"plain"`` or ``"duplicate"``.
-        bot_a, bot_b: the bots' names.
+        bot_a, bot_b: the bots' names (class names, as before).
         master_seed: the single seed the whole match is reproducible from.
         unit: ``"hand"`` or ``"pair"``.
         unit_results: A's result per unit, in bb.
         games: every hand played, in order (two per pair in a duplicate).
         stats: mean / SD / SE / CI / p-value of ``unit_results``.
+        bot_a_desc, bot_b_desc: :func:`describe_bot` of each bot (its
+            ``repr``: e.g. CFRBot's model file, iteration, commit and
+            abstraction fingerprint). Default ``""`` for results built
+            without it.
     """
 
     kind: str
@@ -151,6 +155,8 @@ class MatchResult:
     unit_results: tuple[float, ...]
     games: tuple[Game, ...]
     stats: Summary
+    bot_a_desc: str = ""
+    bot_b_desc: str = ""
 
     @property
     def n_units(self) -> int:
@@ -244,6 +250,17 @@ def _name(bot: Bot) -> str:
     return type(bot).__name__
 
 
+def describe_bot(bot: Bot) -> str:
+    """``repr(bot)``, which identifies its configuration (a trained vs untrained CFRBot differ here).
+
+    Falls back to the class name if the bot has no ``__repr__`` of its own
+    (the default one contains a memory address, which is not reproducible).
+    """
+    if type(bot).__repr__ is object.__repr__:
+        return _name(bot)
+    return repr(bot)
+
+
 def plain_match(make_a: BotFactory, make_b: BotFactory, n_hands: int, master_seed: int) -> MatchResult:
     """``n_hands`` independent hands, A in seat 0, button alternating.
 
@@ -252,6 +269,7 @@ def plain_match(make_a: BotFactory, make_b: BotFactory, n_hands: int, master_see
     if n_hands < 2:
         raise ValueError("need at least 2 hands to estimate a standard deviation")
     a, b = make_a(), make_b()
+    desc_a, desc_b = describe_bot(a), describe_bot(b)  # before play: configuration, not state
     games: list[Game] = []
     for i, (deal_seed, seed_a, seed_b) in enumerate(unit_seeds(master_seed, n_hands)):
         a.reseed(seed_a)
@@ -268,6 +286,8 @@ def plain_match(make_a: BotFactory, make_b: BotFactory, n_hands: int, master_see
         unit_results=results,
         games=tuple(games),
         stats=summarize(results, hands_per_unit=1),
+        bot_a_desc=desc_a,
+        bot_b_desc=desc_b,
     )
 
 
@@ -283,6 +303,7 @@ def duplicate_match(
     # Room 1: A in seat 0. Room 2: B in seat 0. Separate instances per room.
     a1, b1 = make_a(), make_b()
     a2, b2 = make_a(), make_b()
+    desc_a, desc_b = describe_bot(a1), describe_bot(b1)  # before play: configuration, not state
     games: list[Game] = []
     results: list[float] = []
     for i, (deal_seed, seed_a, seed_b) in enumerate(unit_seeds(master_seed, n_pairs)):
@@ -302,4 +323,6 @@ def duplicate_match(
         unit_results=tuple(results),
         games=tuple(games),
         stats=summarize(results, hands_per_unit=2),
+        bot_a_desc=desc_a,
+        bot_b_desc=desc_b,
     )

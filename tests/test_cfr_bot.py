@@ -13,21 +13,24 @@ Hand-built spots use the engine directly (``new_hand`` / ``apply_action`` /
 from __future__ import annotations
 
 import functools
+from pathlib import Path
 
 import numpy as np
 import pytest
 from test_effective_stack import Checked, play_unequal
 from test_info_leak import SpyBot, check_spy
 
-from nutsfinder.abstraction.blueprint import Blueprint, slot_offsets, tree_for
+from nutsfinder.abstraction.blueprint import Blueprint, abstraction_fingerprint, slot_offsets, tree_for
 from nutsfinder.abstraction.config import DEFAULT_CONFIG
 from nutsfinder.abstraction.translation import pseudo_harmonic, to_for_fraction
 from nutsfinder.bots import AlwaysRaiseBot, BayesBot, CallStationBot, CFRBot, EquityBot, PotOddsBot, RandomBot
+from nutsfinder.bots.cfr_bot import UntrainedBlueprintWarning, require_trained
 from nutsfinder.engine.actions import Bet, Call, Check, Fold, Raise
 from nutsfinder.engine.betting import HandState, PublicState, apply_action, deal_board, new_hand, public_view
 from nutsfinder.engine.cards import Card, parse_cards
 from nutsfinder.engine.runner import hand_seeds, play_hand, play_match
 from nutsfinder.eval.match import duplicate_match
+from nutsfinder.eval.report import result_dict
 
 TREE = tree_for(DEFAULT_CONFIG)
 OFFSET, N_ACTIONS = slot_offsets(TREE)
@@ -55,6 +58,8 @@ def _one_hot_blueprint(prefer) -> Blueprint:
 
 BP = _random_blueprint()
 POT_BP = _one_hot_blueprint(lambda a, labs: any(x.kind == "pot" for x in labs))
+FOLD_BP = _one_hot_blueprint(lambda a, labs: isinstance(a, Fold))  # folds to every bet, else checks
+CHECK_BP = _one_hot_blueprint(lambda a, labs: False)  # always check / call
 
 
 def hole(s: str) -> tuple[Card, ...]:
@@ -123,7 +128,8 @@ def _translation_frequency(state: HandState, suffix: str, n: int = 1000) -> floa
 def test_small_bet_read_as_check_when_we_still_act_in_the_abstraction():
     # BB leads 100 into 600 (1/6 pot): read as a check with probability (1 - 1/6) / (1 + 1/6) = 0.714.
     # The button is then at its own abstract node after "check": the blueprint decides, but its
-    # "check" must become a real call (we face a real bet), and it can never fold.
+    # "check" must become a real call or fold (we face a real bet): the equity rule. AKo on 2c7d9h
+    # (E[HS] 0.52) has the odds (100 / 800 = 0.125), so it calls.
     expected = pseudo_harmonic(100 / 600, 0.0, 1.0)
     assert abs(_translation_frequency(flop_spot(100), "-> check") - expected) < 0.05
     v = view(flop_spot(100))
@@ -135,39 +141,164 @@ def test_small_bet_read_as_check_when_we_still_act_in_the_abstraction():
         if d.translations[-1].endswith("-> check"):  # (read as pot, folding is a legitimate answer)
             assert d.path == "raise to 300 call check" and a != Fold()
             assert a == Call() if d.chosen == "check" else isinstance(a, Raise)
+            if d.chosen == "check":
+                assert any("equity rule" in n and "call" in n for n in d.notes)
 
 
-def test_small_bet_that_closes_the_abstract_street_is_called():
-    # The BB (the bot, seat 1) checks the flop, the button bets 100: if that is read as a check the
-    # abstract flop is over (check-check), but the real game asks us to respond: we call.
+def test_abstract_check_facing_a_real_bet_folds_a_dominated_hand():
+    # Same spot, but with 3h4s (E[HS] 0.166 on 2c7d9h) facing a 1/3-pot lead (200 into 600):
+    # pot odds 200 / 1000 = 0.2. When the lead is read as a check and the blueprint checks, the
+    # old rule called; the equity rule folds (calling loses even against a random hand).
+    s = new_hand(button=0, hole_cards=(hole("3h4s"), hole("8c8s")))
+    s = play(s, (0, Raise(300)), (1, Call()), (1, Bet(200)))
+    folds = 0
+    for seed in range(200):
+        bot = CFRBot(CHECK_BP, seed, debug=True)
+        a = bot.act(view(s), hole("3h4s"))
+        d = bot.last_decision
+        if d.translations[-1].endswith("-> check"):
+            assert d.chosen == "check" and a == Fold()
+            folds += 1
+    assert folds > 50  # P(read as check) = (1 - 1/3) / (1 + 1/3) = 0.5
+
+
+def test_small_bet_that_closes_the_abstract_street_is_remapped_to_the_smallest_bet():
+    # The BB (the bot, seat 1) checks the flop, the button bets 100: read as a check, the abstract
+    # flop would be over (check-check) while the real game asks us to respond. Instead the bet is
+    # remapped to the smallest bet edge (pot): the blueprint answers it (fold / call / raise) and
+    # the node is "soft". So the walk never goes off-tree here, whichever way the bet is read.
     s = play(new_hand(button=0, hole_cards=HOLES), (0, Raise(300)), (1, Call()), (1, Check()), (0, Bet(100)))
     expected = pseudo_harmonic(100 / 600, 0.0, 1.0)
-    assert abs(_frequency(s, "passive-ahead", n=1000) - expected) < 0.05
-    for seed in range(60):
+    remapped = 0
+    for seed in range(1000):
         bot = CFRBot(BP, seed, debug=True)
+        bot.act(view(s), HOLES[1])
+        d = bot.last_decision
+        assert d.mode == "blueprint" and d.path == "raise to 300 call check bet 600"
+        assert [name for name, _ in d.strategy] == ["fold", "call", "raise[pot:1]", "raise[all_in]"]
+        is_remap = "remapped to bet[pot:1]" in d.translations[-1]
+        assert (d.node in bot._walk.soft) == is_remap
+        remapped += is_remap
+    assert abs(remapped / 1000 - expected) < 0.05
+
+
+def test_soft_node_fold_follows_the_equity_rule():
+    # FOLD_BP folds whenever it can. 8c8s (E[HS] 0.71) facing the 1/6-pot bet: at a soft node (the bet
+    # was read as passive, then remapped) the fold is overridden by the equity rule -> call; when the
+    # bet was read as pot (not soft) the blueprint's fold stands.
+    s = play(new_hand(button=0, hole_cards=HOLES), (0, Raise(300)), (1, Call()), (1, Check()), (0, Bet(100)))
+    seen = set()
+    for seed in range(100):
+        bot = CFRBot(FOLD_BP, seed, debug=True)
         a = bot.act(view(s), HOLES[1])
-        if bot.last_decision.mode == "passive-ahead":
-            assert a == Call() and bot.last_decision.chosen == "fallback check/call"
-            assert bot.last_decision.translations[-1].endswith("-> check")
-            # Our call is a real-only action: on the turn the walk is at the turn's first node.
-            s2 = play(s, (1, Call()))
-            bot.act(view(s2), HOLES[1])
-            assert bot.last_decision.mode == "blueprint" and bot.last_decision.street == "turn"
-            assert bot.last_decision.path == "raise to 300 call check check"
+        soft = bot.last_decision.node in bot._walk.soft
+        assert a == (Call() if soft else Fold())
+        seen.add(soft)
+    assert seen == {True, False}
+    # The walk follows our real call (not the abstract fold edge): next street, on the tree.
+    for seed in range(100):
+        bot = CFRBot(FOLD_BP, seed, debug=True)
+        if bot.act(view(s), HOLES[1]) == Call():
+            break
+    s2 = play(s, (1, Call()))
+    bot.act(view(s2), HOLES[1])
+    assert bot.last_decision.mode == "blueprint" and bot.last_decision.street == "turn"
+    assert bot.last_decision.path == "raise to 300 call check bet 600 call"
+
+
+def _river_spot(button_bet: int, holes) -> HandState:
+    """Open, call; checked to the river; the BB (seat 1) checks the river and the button bets."""
+    s = new_hand(button=0, hole_cards=holes)
+    return play(s, (0, Raise(300)), (1, Call()), (1, Check()), (0, Check()), (1, Check()), (0, Check()),
+                (1, Check()), (0, Bet(button_bet)))
+
+
+def test_weak_hand_facing_river_half_pot_after_checking_does_not_always_call():
+    # 4h5c on 2c7d9h Js 3d: E[HS] 0.005; half pot (300 into 600) needs 300 / 1200 = 0.25.
+    # Before the fix a passive read (P = 1/3) closed the river and the bot called with 100%.
+    weak, strong = hole("4h5c"), hole("9c9s")
+    s = _river_spot(300, (hole("AsKd"), weak))
+    actions = [CFRBot(BP, seed).act(view(s), weak) for seed in range(300)]
+    assert actions.count(Fold()) > 0
+    # With a blueprint that always folds to bets, the weak hand folds every time (both readings) ...
+    assert all(CFRBot(FOLD_BP, seed).act(view(s), weak) == Fold() for seed in range(100))
+    # ... the strong hand calls whenever the read was passive (soft node, equity 0.98 > 0.25) ...
+    calls = sum(CFRBot(FOLD_BP, seed).act(view(s), strong) == Call() for seed in range(600))
+    assert abs(calls / 600 - pseudo_harmonic(0.5, 0.0, 1.0)) < 0.06
+    # ... and a raising blueprint raises it whichever way the bet was read.
+    for seed in range(50):
+        a = CFRBot(POT_BP, seed).act(view(s), strong)
+        assert isinstance(a, Raise) and apply_action(s, 1, a)
+
+
+def test_reviewer_third_pot_flop_case():
+    # The reviewer's leak: a flop call with E[HS] ~0.20 facing 1/3 pot (pot odds exactly 0.2).
+    # 4h5c (0.189 < 0.2) must fold whenever the blueprint folds or the read is passive and the
+    # blueprint checks/folds; 4h6c (0.201 > 0.2) is a (marginal) call by the equity rule.
+    s = play(new_hand(button=0, hole_cards=(hole("AsKd"), hole("4h5c"))),
+             (0, Raise(300)), (1, Call()), (1, Check()), (0, Bet(200)))
+    for seed in range(200):
+        bot = CFRBot(FOLD_BP, seed, debug=True)
+        assert bot.act(view(s), hole("4h5c")) == Fold()
+        d = bot.last_decision
+        assert d.mode == "blueprint"
+        if d.node in bot._walk.soft:
+            assert any("E[HS] 0.189 <= pot odds 0.200: fold" in n for n in d.notes)
+    soft_calls = 0
+    for seed in range(200):
+        bot = CFRBot(FOLD_BP, seed, debug=True)
+        a = bot.act(view(s), hole("4h6c"))
+        if bot.last_decision.node in bot._walk.soft:
+            assert a == Call()
+            soft_calls += 1
+    assert soft_calls > 60  # P(passive) = 1/2
+
+
+def test_terminal_with_chips_behind_folds_junk_to_a_big_bet():
+    # BB 3-bets to 4,000 (x = 3.08 between pot 1.0 and all-in 8.08): read as all-in about 65% of the
+    # time; the button calls, so the abstract hand is an all-in showdown ("terminal") while 6,000 are
+    # still behind. Checked down to the river, the BB shoves 6,000 into 8,000: pot odds 6,000 / 20,000
+    # = 0.3. Junk (4h5c, 0.005) folds; the old rule called. The nuts-ish 9c9s (0.98) calls.
+    s = new_hand(button=0, hole_cards=(hole("4h5c"), hole("AsKd")))
+    s = play(s, (0, Raise(300)), (1, Raise(4000)), (0, Call()), (1, Check()), (0, Check()),
+             (1, Check()), (0, Check()), (1, Bet(6000)))
+    terminal = 0
+    for seed in range(100):
+        junk, nuts = CFRBot(BP, seed, debug=True), CFRBot(BP, seed, debug=True)
+        a = junk.act(view(s), hole("4h5c"))
+        b = nuts.act(view(s), hole("9c9s"))
+        if junk.last_decision.mode == "terminal":
+            terminal += 1
+            assert a == Fold() and junk.last_decision.chosen == "fallback fold"
+            assert b == Call() and nuts.last_decision.chosen == "fallback call"
+    assert terminal > 40
+    # With a check available the fallback checks (never folds for free, never bets).
+    s2 = play(new_hand(button=0, hole_cards=(hole("4h5c"), hole("AsKd"))),
+              (0, Raise(300)), (1, Raise(4000)), (0, Call()), (1, Check()))
+    for seed in range(20):
+        bot = CFRBot(BP, seed, debug=True)
+        a = bot.act(view(s2), hole("9c9s"))
+        if bot.last_decision.mode == "terminal":
+            assert a == Check()
 
 
 def test_preflop_min_raise_maps_between_passive_and_pot():
     # Button opens to 300, BB min-raises to 500: x = 200 / 600 = 1/3 between passive (0) and pot (1).
+    # A passive read ("call") would end the abstract preflop, so it is remapped to the pot 3-bet:
+    # the walk is always at "raise to 300 raise to 900"; it is soft with probability P(passive).
     s = play(new_hand(button=0, hole_cards=HOLES), (0, Raise(300)), (1, Raise(500)))
     expected = pseudo_harmonic(1 / 3, 0.0, 1.0)
-    assert abs(_frequency(s, "passive-ahead", n=1000) - expected) < 0.05
-    bot = CFRBot(BP, 3, debug=True)
-    bot.act(view(s), HOLES[0])
-    d = bot.last_decision
-    if d.mode == "blueprint":  # read as the pot 3-bet: the node is the child of that edge
-        assert d.path == "raise to 300 raise to 900"
-    else:  # read as a call: the abstract preflop is over, the walk waits on the flop
-        assert d.path == "raise to 300 call" and bot.act(view(s), HOLES[0]) == Call()
+    soft = 0
+    for seed in range(1000):
+        bot = CFRBot(FOLD_BP, seed, debug=True)
+        a = bot.act(view(s), HOLES[0])
+        d = bot.last_decision
+        assert d.mode == "blueprint" and d.path == "raise to 300 raise to 900"
+        is_soft = d.node in bot._walk.soft
+        soft += is_soft
+        # Soft: AKo (0.65 vs a random hand) has the odds (200 / 1,000) -> call; else the blueprint folds.
+        assert a == (Call() if is_soft else Fold())
+    assert abs(soft / 1000 - expected) < 0.05
 
 
 def test_overbet_maps_between_pot_and_all_in():
@@ -365,8 +496,128 @@ def test_fuzz_10k_hands_against_every_bot(opponent):
 
 
 def test_untrained_default_and_repr():
-    bot = CFRBot()
+    with pytest.warns(UntrainedBlueprintWarning):
+        bot = CFRBot()
     assert repr(bot) == "CFRBot(model=untrained (uniform))"
     a = bot.act(view(new_hand(button=0, hole_cards=HOLES)), HOLES[0])
     assert a in (Fold(), Call(), Raise(300), Raise(10_000))
     assert CFRBot(BP, 0, time_budget=5.0).time_budget == 5.0
+
+
+# --- strict on-tree self-play ---------------------------------------------------------
+
+
+class StrictCFR(CFRBot):
+    """Asserts at every decision that the walk is exactly on the tree (the reviewer's self-play check)."""
+
+    def __init__(self, bp: Blueprint, seed: int) -> None:
+        super().__init__(bp, seed, debug=True)
+        self.decisions = 0
+
+    def act(self, state, hole_cards):
+        a = super().act(state, hole_cards)
+        d = self.last_decision
+        n, b = d.node, state.button
+        assert d.mode == "blueprint", str(d)
+        assert TREE.player[n] == (0 if state.seat == b else 1), str(d)  # button = tree seat 0
+        assert TREE.street[n] == int(state.street), str(d)
+        assert tuple(TREE.contrib[n]) == (state.total_bets[b], state.total_bets[1 - b]), str(d)
+        assert not d.notes, str(d)  # no passive filler, no remap / equity-rule fallback
+        assert all("remapped" not in t and "no bet edge" not in t for t in d.translations), str(d)
+        self.decisions += 1
+        return a
+
+
+def _strict_self_play(bp: Blueprint, n_hands: int, master_seed: int) -> None:
+    bots = [StrictCFR(bp, 1), StrictCFR(bp, 2)]
+    logs = play_match(bots, n_hands, master_seed=master_seed)  # button alternates
+    assert {log.button for log in logs} == {0, 1}
+    assert min(b.decisions for b in bots) > n_hands  # both seats, several decisions per hand
+
+
+def test_strict_self_play_stays_on_the_tree():
+    _strict_self_play(BP, 300, master_seed=31)
+    _strict_self_play(_one_hot_blueprint(lambda a, labs: bool(labs)), 60, master_seed=32)  # always bets
+
+
+@pytest.mark.slow
+def test_strict_self_play_official_blueprint():
+    path = Path(__file__).resolve().parents[1] / "models" / "holdem_official" / "latest.npz"
+    if not path.exists():
+        pytest.skip(f"{path} not present (models/ is not in git)")
+    _strict_self_play(Blueprint.load(path), 400, master_seed=33)
+
+
+def test_one_instance_in_both_seats_keeps_one_walk_per_seat():
+    # The button opens to 250 (x = 0.75: a randomised translation). The same instance then plays
+    # both seats; each seat's walk (and its translations) must survive the other seat's decisions.
+    bot = CFRBot(BP, 4, debug=True)
+    s = play(new_hand(button=0, hole_cards=HOLES), (0, Raise(250)))
+    s = play(s, (1, bot.act(view(s), HOLES[1])))
+    w1, first = bot._walks[1], bot.last_decision.translations
+    while not s.is_hand_over:
+        seat = s.to_act
+        s = play(s, (seat, bot.act(view(s), HOLES[seat])))
+        if seat == 1:
+            assert bot._walks[1] is w1 and bot.last_decision.translations[:len(first)] == first
+        if s.to_act is None and s.cards_needed:
+            s = play(s)
+    assert 0 in bot._walks and bot._walks[1] is w1
+    # Whole matches with one instance in both seats: legal, and self-play stays on the tree.
+    one = StrictCFR(BP, 5)
+    play_match([one, one], 100, master_seed=8)
+
+
+# --- seeds, trained/untrained, metadata ------------------------------------------------
+
+
+def test_default_seed_is_fixed_so_play_match_is_reproducible():
+    a = play_match([CFRBot(BP), RandomBot(1)], 40, master_seed=5)
+    b = play_match([CFRBot(BP), RandomBot(1)], 40, master_seed=5)
+    assert a == b
+
+
+def test_untrained_warns_and_is_detectable():
+    with pytest.warns(UntrainedBlueprintWarning):
+        bot = CFRBot()
+    assert not bot.is_trained
+    with pytest.raises(ValueError, match="not trained"):
+        require_trained(bot)
+    assert not CFRBot(BP).is_trained  # synthetic tables: no training iterations recorded
+    meta = {"iteration": 1000, "commit": "abc1234", "abstraction": abstraction_fingerprint(DEFAULT_CONFIG)}
+    trained = CFRBot(Blueprint.from_tables(DEFAULT_CONFIG, None, BP.sigma.copy(), meta))
+    assert trained.is_trained
+    require_trained(trained)
+    with pytest.raises(ValueError):
+        require_trained(trained, min_iterations=10_000)
+    with pytest.raises(ValueError, match="not a CFRBot"):
+        require_trained(RandomBot(0))
+    assert repr(trained) == f"CFRBot(model=tables @ 1,000 it, commit abc1234, abstraction {meta['abstraction'][:12]})"
+
+
+def test_match_results_record_which_blueprint_played():
+    meta = {"iteration": 1000, "commit": "abc1234", "abstraction": abstraction_fingerprint(DEFAULT_CONFIG)}
+    trained = Blueprint.from_tables(DEFAULT_CONFIG, None, BP.sigma.copy(), meta)
+    with pytest.warns(UntrainedBlueprintWarning):
+        res = duplicate_match(functools.partial(CFRBot, trained, 1), CFRBot, 3, master_seed=1)
+    assert res.bot_a == res.bot_b == "CFRBot"  # unchanged: the class names
+    assert res.bot_a_desc == repr(CFRBot(trained)) and "1,000 it" in res.bot_a_desc
+    assert res.bot_b_desc == "CFRBot(model=untrained (uniform))"
+    d = result_dict(res)
+    assert d["bot_a"] == "CFRBot" and d["bot_a_desc"] == res.bot_a_desc and d["bot_b_desc"] == res.bot_b_desc
+
+
+def test_equity_rule_prices_an_all_in_for_less_against_the_effective_pot():
+    # Stacks (10,000, 600): limp/check, BB checks the flop, button bets 3,000. The BB has 500 behind:
+    # P = 3,200 but 2,500 of the bet is refunded, so P_eff = 700 and the call needs 500 / 1,200 = 0.417
+    # (the raw pot would say 500 / 3,700 = 0.135 and call far too loosely).
+    s = new_hand(button=0, stacks=(10_000, 600), hole_cards=(hole("AsKd"), hole("8s6s")))
+    s = play(s, (0, Call()), (1, Check()), (1, Check()), (0, Bet(3000)))
+    v = view(s)
+    assert v.seat == 1 and v.legal.call_amount == 500 and v.pot == 3200
+    bot = CFRBot(BP, 0)
+    for cards in (hole("8s6s"), hole("AhAc")):
+        action, note = bot._equity_rule(v, cards)
+        e = bot._equity(v, cards)
+        assert "pot odds 0.417" in note
+        assert action == (Call() if e > 500 / 1200 else Fold())

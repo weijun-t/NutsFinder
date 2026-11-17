@@ -83,9 +83,12 @@ Rules for the edge cases
   is exploitable: the opponent min-bets into a big pot and we fold as if
   facing a pot bet, while the bet offers great odds. If *passive* is chosen,
   the abstract history says the opponent checked / called; the real game
-  may still make us respond to their small bet, and CFRBot should then
-  **call** (that is what "they really put in nothing" means for us, and it
-  is cheap because ``x < a_0``).
+  may still make us respond to their small bet. CFRBot then answers by
+  its *equity rule* (call iff its equity against a random hand beats the
+  real pot odds ``x / (1 + 2x)``), or, if the passive read would close the
+  abstract street, re-reads the bet as the smallest non-all-in bet edge
+  with the same rule guarding its folds (see the CFRBot module doc for the
+  maths and the min-bet argument).
 - **Between two sizes**: pseudo-harmonic.
 - **Above the largest non-all-in size**: all-in is just the largest size,
   so this is pseudo-harmonic between that size and all-in.

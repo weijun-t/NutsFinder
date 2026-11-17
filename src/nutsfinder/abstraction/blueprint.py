@@ -237,10 +237,27 @@ class Blueprint:
         """Average cumulative regret per action (chips per unit weight), if the file had regrets."""
         return None if self.regrets is None else self.regrets[self.slots(node, bucket)]
 
+    @property
+    def is_trained(self) -> bool:
+        """False for :meth:`uniform` and for tables with no recorded training iterations."""
+        return not self.meta.get("untrained") and self.iteration > 0
+
+    def info(self) -> dict[str, Any]:
+        """Identification for result metadata: model file, iteration, commit, fingerprint prefix."""
+        fp = self.meta.get("abstraction")
+        return {"untrained": not self.is_trained, "path": self.meta.get("path"), "iteration": self.iteration,
+                "commit": self.meta.get("commit"), "abstraction": fp[:12] if fp else None}
+
     def describe(self) -> str:
+        """One line: ``latest.npz @ 13,200,000 it, commit 902376d, abstraction 1cad42d6a4be``."""
         if self.meta.get("untrained"):
             return "untrained (uniform)"
-        return f"{self.meta.get('path', 'tables')} @ {self.iteration:,} it"
+        parts = [f"{self.meta.get('path', 'tables')} @ {self.iteration:,} it"]
+        if self.meta.get("commit"):
+            parts.append(f"commit {self.meta['commit']}")
+        if self.meta.get("abstraction"):
+            parts.append(f"abstraction {self.meta['abstraction'][:12]}")
+        return ", ".join(parts)
 
 
 @lru_cache(maxsize=4)

@@ -184,3 +184,12 @@ def test_se_is_computed_over_pairs() -> None:
     for i, unit in enumerate(r.unit_results):
         g1, g2 = r.games[2 * i], r.games[2 * i + 1]
         assert unit == pytest.approx(g1.a_net_bb + g2.a_net_bb)
+
+
+def test_bot_descriptions_are_taken_before_play():
+    """``bot_*_desc`` records the configuration, not state learned during the match."""
+    from nutsfinder.bots import BayesBot, RandomBot
+    from nutsfinder.eval.match import duplicate_match, plain_match
+
+    for m in (duplicate_match(BayesBot, RandomBot, 3, 1), plain_match(BayesBot, RandomBot, 4, 1)):
+        assert "hands_seen=0" in m.bot_a_desc

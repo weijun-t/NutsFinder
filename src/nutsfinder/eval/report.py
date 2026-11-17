@@ -57,6 +57,8 @@ def result_dict(result: MatchResult, extra: dict | None = None) -> dict:
     d = {
         "bot_a": result.bot_a,
         "bot_b": result.bot_b,
+        "bot_a_desc": getattr(result, "bot_a_desc", ""),
+        "bot_b_desc": getattr(result, "bot_b_desc", ""),
         "kind": result.kind,
         "master_seed": result.master_seed,
         "seats_swapped": result.kind == "duplicate",
@@ -135,6 +137,8 @@ def session_result_dict(result: SessionMatchResult, bucket_pairs: int = 25, extr
     d = {
         "bot_a": result.bot_a,
         "bot_b": result.bot_b,
+        "bot_a_desc": getattr(result, "bot_a_desc", ""),
+        "bot_b_desc": getattr(result, "bot_b_desc", ""),
         "kind": result.kind,
         "master_seed": result.master_seed,
         "session_seeds": [s.seed for s in result.sessions],

@@ -88,6 +88,7 @@ hands leaves 300 in between.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import datetime as dt
 import math
 import multiprocessing as mp
@@ -283,8 +284,7 @@ def main() -> None:
             print(res.summary(), flush=True)
             # Keep only per-hand nets (drop hand logs) for the paired comparisons below.
             results[(a, b)] = combine_sessions(
-                [s.__class__(s.index, s.seed, s.bot_a, s.bot_b, s.hand_results, s.pair_results, ())
-                 for s in res.sessions],
+                [dataclasses.replace(s, games=()) for s in res.sessions],
                 MASTER_SEED, PAIRS_PER_SESSION,
             )
     lines += [
