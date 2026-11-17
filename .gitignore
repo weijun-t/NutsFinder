@@ -5,6 +5,7 @@ venv/
 .pytest_cache/
 *.egg-info/
 results/*.json
+results/*.jsonl
 .DS_Store
 .hypothesis/
 models/

@@ -92,7 +92,7 @@ __all__ = [
     "SUIT_PERMS", "stream_seed", "canonical_board", "canonical_hand_board",
     "preflop_bucket", "EHSTables", "ehs_mc", "equal_frequency_edges",
     "sample_deals", "CardAbstraction", "FLOP_FILE", "EHS_SCALE", "quantize",
-    "dequantize", "turn_table_exact",
+    "dequantize", "turn_table_exact", "ehs_all",
 ]
 
 SUIT_PERMS: tuple[tuple[int, int, int, int], ...] = tuple(permutations(range(4)))
@@ -428,6 +428,26 @@ def sample_deals(street: int, n: int, seed: int) -> list[tuple[tuple[int, int], 
 def _default_edges() -> dict[int, tuple[float, ...]]:
     from nutsfinder.abstraction.bucket_data import EDGES
     return EDGES
+
+
+def ehs_all(tables: EHSTables, board: Sequence[int]) -> np.ndarray:
+    """:meth:`EHSTables.ehs` of *every* combo on ``board`` at once (float64, NaN if it touches the board).
+
+    Indexed by real combo (:func:`~nutsfinder.abstraction.strength.combo_index`); entry h
+    equals ``tables.ehs(COMBO_CARDS[h], board)`` exactly (same table, same quantisation).
+    """
+    n = len(board)
+    if n == 5:
+        q = tables.river_table(board)
+    elif n in (3, 4):
+        canon, k = canonical_board(board)
+        table = tables.flop_table(canon) if n == 3 else tables.turn_table(canon)
+        q = table[_PERM_COMBO[k]]
+    else:
+        raise ValueError(f"board must have 3, 4 or 5 cards, got {n}")
+    out = q.astype(np.float64) / EHS_SCALE
+    out[q == _INVALID] = np.nan
+    return out
 
 
 class CardAbstraction:

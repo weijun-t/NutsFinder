@@ -48,15 +48,24 @@ is generated first (``examples/make_bucket_edges.py``'s turn step, ~1 min on
 
 from __future__ import annotations
 
-import argparse
-import json
-import multiprocessing as mp
 import os
-import shutil
-import subprocess
-import sys
-import time
-from pathlib import Path
+
+# One BLAS/OpenMP thread per process, set before numpy is imported (here and, through the
+# environment, in every spawned worker). With the default, each of 22 workers starts a
+# thread pool sized to all cores and reserves memory per thread; on this machine that
+# exhausted the commit limit (numpy MemoryError on tiny arrays). The thread count does not
+# change the results: tables are bit-identical (checked on a 2-worker run, as run_phase6.py).
+for _var in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
+    os.environ.setdefault(_var, "1")
+
+import argparse  # noqa: E402
+import json  # noqa: E402
+import multiprocessing as mp  # noqa: E402
+import shutil  # noqa: E402
+import subprocess  # noqa: E402
+import sys  # noqa: E402
+import time  # noqa: E402
+from pathlib import Path  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))

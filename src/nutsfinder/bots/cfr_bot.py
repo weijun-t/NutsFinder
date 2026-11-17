@@ -135,6 +135,13 @@ entropy) and by :meth:`reseed`, used for the translations and the action
 draws (one uniform each), in the order the decisions happen. Same seed,
 same model, same opponent -> identical hands.
 
+Policy queries (for Local Best Response, :mod:`nutsfinder.eval.lbr`):
+:meth:`CFRBot.policy` / :meth:`CFRBot.range_policy` return the exact probability
+of each real action at a public spot for any holding(s), with the hidden
+translation draws and own-edge choices enumerated and marginalised, and the
+equity-rule overrides applied as in :meth:`CFRBot.act`. They read only the
+blueprint, the tree and the card tables: no RNG draw, no change to the walks.
+
 Trained or not: ``CFRBot()`` (``model=None``) plays the untrained uniform
 blueprint and warns (:class:`UntrainedBlueprintWarning`). An evaluation
 script should check :attr:`CFRBot.is_trained` or call
@@ -162,9 +169,9 @@ import numpy as np
 
 import nutsfinder.abstraction.translation as tr
 from nutsfinder.abstraction.blueprint import Blueprint
-from nutsfinder.abstraction.cards import CardAbstraction
+from nutsfinder.abstraction.cards import CardAbstraction, ehs_all, preflop_bucket
 from nutsfinder.abstraction.config import AbstractionConfig
-from nutsfinder.abstraction.strength import card_ids
+from nutsfinder.abstraction.strength import COMBO_CARDS, card_ids, combo_index
 from nutsfinder.abstraction.tree import CHANCE, TERMINAL, BettingTree, SizeLabel
 from nutsfinder.bots.common import aggressive_action, cards_text, check_turn, effective_pot, label, pot_odds
 from nutsfinder.engine.actions import Action, Bet, Call, Check, Fold, Raise
@@ -273,6 +280,7 @@ class _Walk:
     soft: set[int] = field(default_factory=set)  # nodes reached by a remapped passive read (module doc)
     translations: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    last_p_low: float | None = None     # P(lower size) of the last *mixed* translation (policy queries)
 
 
 class CFRBot(Bot):
@@ -371,8 +379,12 @@ class CFRBot(Bot):
         n = w.node
         return not w.over and t.player[n] in (0, 1) and t.street[n] == street
 
-    def _translate(self, w: _Walk, state: PublicState, i: int, to: int) -> int:
-        """Edge index for a real bet/raise to ``to`` (history record i) at the walk's node."""
+    def _translate(self, w: _Walk, state: PublicState, i: int, to: int, rng=None) -> int:
+        """Edge index for a real bet/raise to ``to`` (history record i) at the walk's node.
+
+        ``rng`` defaults to the bot's generator; :meth:`range_policy` passes a forced one
+        to enumerate both sides of a mixed translation without touching the bot's stream.
+        """
         n = w.node
         labels = self.tree.edge_labels(n)
         edge_of: list[int] = []
@@ -385,7 +397,8 @@ class CFRBot(Bot):
         if not sizes:
             w.translations.append(f"#{i} real raise to {to}: no bet edge in the abstraction -> call")
             return self._passive_edge(n)
-        res = tr.translate_bet(pre, to, sizes, self._rng, below=self.below)
+        res = tr.translate_bet(pre, to, sizes, self._rng if rng is None else rng, below=self.below)
+        w.last_p_low = res.p_lower if res.lower != res.upper else None
         j = self._passive_edge(n) if res.passive else edge_of[res.index]
         text = f"#{i} to {to}: {res} -> {_edge_text(self.tree.actions(n)[j], labels[j])}"
         if res.passive and self._closes_street(n, j):
@@ -406,8 +419,8 @@ class CFRBot(Bot):
         child = t.child_ids(n)[j]
         return not (t.player[child] in (0, 1) and t.street[child] == t.street[n])
 
-    def _follow(self, w: _Walk, state: PublicState, i: int, rec: ActionRecord) -> None:
-        """Advance the walk over real history record i."""
+    def _follow(self, w: _Walk, state: PublicState, i: int, rec: ActionRecord, rng=None) -> None:
+        """Advance the walk over real history record i (``rng``: see :meth:`_translate`)."""
         t = self.tree
         self._advance_to_street(w, int(rec.street))
         for _ in range(8):
@@ -435,7 +448,7 @@ class CFRBot(Bot):
                 if node == n and labels[mine]:
                     self._step(w, mine)  # our own bet: the edge we chose, no re-translation
                 else:
-                    self._step(w, self._translate(w, state, i, to))
+                    self._step(w, self._translate(w, state, i, to, rng))
 
     def _sync(self, state: PublicState) -> _Walk:
         key = (state.button, state.starting_stacks, state.blinds)
@@ -453,11 +466,13 @@ class CFRBot(Bot):
 
     # --- acting ----------------------------------------------------------------------
 
-    def _real_action(self, state: PublicState, j: int) -> Action:
+    def _real_action(self, state: PublicState, j: int, node: int | None = None) -> Action:
         legal = state.legal
         assert legal is not None
-        edge = self.tree.actions(self._walk.node)[j]  # type: ignore[union-attr]
-        labels = self.tree.edge_labels(self._walk.node)[j]  # type: ignore[union-attr]
+        if node is None:
+            node = self._walk.node  # type: ignore[union-attr]
+        edge = self.tree.actions(node)[j]
+        labels = self.tree.edge_labels(node)[j]
         if isinstance(edge, Fold):
             return Fold() if legal.can_call else Check()
         if not labels:
@@ -471,6 +486,18 @@ class CFRBot(Bot):
             return aggressive_action(legal, tr.to_for_bb(state, kinds["open_bb"].value))
         return tr.real_action_for_fraction(state, labels[0].value)
 
+    def _own_node(self, w: _Walk, state: PublicState) -> bool:
+        """Make the walk's node ours if the opponent owns it (it checks/calls); True if the blueprint decides."""
+        t = self.tree
+        # Our real seat must own the abstract node; if the opponent does, it checks/calls (module doc).
+        for _ in range(4):
+            if not self._in_sync(w, int(state.street)) or t.player[w.node] == self._tree_seat(state, state.seat):
+                break
+            w.notes.append(f"abstract node {w.node} belongs to the opponent: it checks/calls")
+            self._step(w, self._passive_edge(w.node))
+            self._advance_to_street(w, int(state.street))
+        return self._in_sync(w, int(state.street)) and t.player[w.node] == self._tree_seat(state, state.seat)
+
     def act(self, state: PublicState, hole_cards: tuple[Card, ...]) -> Action:
         start = time.perf_counter()
         legal = check_turn(state)
@@ -481,14 +508,7 @@ class CFRBot(Bot):
         regrets = None
         reached = True
         notes: list[str] = []
-        # Our real seat must own the abstract node; if the opponent does, it checks/calls (module doc).
-        for _ in range(4):
-            if not self._in_sync(w, int(state.street)) or t.player[w.node] == self._tree_seat(state, state.seat):
-                break
-            w.notes.append(f"abstract node {w.node} belongs to the opponent: it checks/calls")
-            self._step(w, self._passive_edge(w.node))
-            self._advance_to_street(w, int(state.street))
-        if self._in_sync(w, int(state.street)) and t.player[w.node] == self._tree_seat(state, state.seat):
+        if self._own_node(w, state):
             mode = "blueprint"
             n = w.node
             bucket = self.cards.bucket(card_ids(hole_cards), card_ids(state.board))
@@ -531,6 +551,153 @@ class CFRBot(Bot):
             log.debug("%s", self.last_decision)
         return action
 
+    # --- side-effect-free policy queries (for Local Best Response) ---------------------
+
+    def policy(self, view: PublicState, hole_cards: tuple[Card, ...]) -> dict[Action, float]:
+        """``{real action: probability}`` this bot would play at ``view`` holding ``hole_cards``.
+
+        Exact and side-effect free (no RNG draw, no change to the bot's walks): see
+        :meth:`range_policy`. ``view`` is the bot's own view (``view.seat`` to act).
+        """
+        ids = card_ids(hole_cards)
+        actions, probs = self.range_policy(view, np.array([combo_index(ids[0], ids[1])]))
+        return {a: float(p) for a, p in zip(actions, probs[0]) if p > 0.0}
+
+    def range_policy(self, view: PublicState, combos: np.ndarray) -> tuple[list[Action], np.ndarray]:
+        """The action probabilities of every holding in ``combos`` at ``view``, without side effects.
+
+        Returns ``(actions, probs)``: the distinct real actions and a ``(len(combos),
+        len(actions))`` matrix whose rows sum to 1. ``combos`` are indices into
+        :data:`~nutsfinder.abstraction.strength.COMBO_CARDS` (they must not touch the board).
+
+        What it computes. The bot's hidden state when it acts is its abstract walk, which
+        depends on (a) the pseudo-harmonic translations of the opponent's bets (random,
+        independent of our cards) and (b) which edge *we* chose for each of our own past
+        bets (several edges can give the same real chips, e.g. pot clamped to all-in).
+        The walk is replayed from the public history alone, on copies, with every hidden
+        branch enumerated: a mixed translation splits the branch with its probabilities
+        ``P(lower), 1 - P(lower)``; our own past action keeps only the edges whose real
+        action matches what was played, weighted by their blueprint probability *for
+        each holding* (so the weights are vectors over holdings). The deterministic
+        overrides (the equity rule at soft nodes and for an abstract check facing a real
+        bet, the passive-ahead/terminal fallbacks) are applied exactly as in :meth:`act`.
+        The answer for holding ``h`` is ``sum_b P(b | h, history) P(action | h, b)``: the
+        conditional probability of the next action given everything public, which is what
+        an opponent who knows our strategy (but not our dice) needs for Bayes' rule.
+        If no branch is consistent with ``h``'s past actions (``h`` could not have played
+        them), the translation probabilities alone weight the branches.
+
+        Nothing on ``self`` is mutated: the walks are fresh copies, translations use a
+        forced stand-in generator (never ``self._rng``), and only the immutable
+        blueprint, tree and card tables are read.
+        """
+        check_turn(view)
+        combos = np.asarray(combos, dtype=np.int64)
+        n_h = len(combos)
+        feats = _HoldingFeatures(self, view.board, combos)
+        root = _Walk((view.button, view.starting_stacks, view.blinds))
+        branches = [(root, np.ones(n_h), 1.0)]  # (walk, weight vector over holdings, prior)
+        for i, rec in enumerate(view.history):
+            nxt: list[tuple[_Walk, np.ndarray, float]] = []
+            if rec.player == view.seat:
+                pre = tr.view_before_action(view, i)
+                for w, wt, pr in branches:
+                    self._advance_to_street(w, int(pre.street))
+                    self._own_node(w, pre)
+                    node = w.node
+                    entries = self._branch_dist(w, pre, feats)
+                    if isinstance(rec.action, (Bet, Raise)):
+                        for j, a, p in entries:
+                            if a == rec.action and j is not None:
+                                w2 = _copy_walk(w)
+                                w2.own[i] = (node, j)
+                                self._follow(w2, view, i, rec)
+                                nxt.append((w2, wt * p, pr))
+                    else:
+                        lik = np.zeros(n_h)
+                        for _, a, p in entries:
+                            if a == rec.action:
+                                lik = lik + p
+                        self._follow(w, view, i, rec)
+                        nxt.append((w, wt * lik, pr))
+            else:
+                for w, wt, pr in branches:
+                    low = _copy_walk(w)
+                    forced = _ForcedUniform(0.0)
+                    self._follow(low, view, i, rec, rng=forced)
+                    if not forced.calls:
+                        nxt.append((low, wt, pr))
+                        continue
+                    p_low = low.last_p_low
+                    assert p_low is not None
+                    high = _copy_walk(w)
+                    self._follow(high, view, i, rec, rng=_ForcedUniform(1.0))
+                    nxt += [(low, wt * p_low, pr * p_low), (high, wt * (1 - p_low), pr * (1 - p_low))]
+            branches = _merge_branches(nxt)
+        actions: list[Action] = []
+        index: dict[Action, int] = {}
+        num: list[np.ndarray] = []
+        prior_num: list[np.ndarray] = []
+        tot = np.zeros(n_h)
+        prior_tot = 0.0
+        for w, wt, pr in branches:
+            self._advance_to_street(w, int(view.street))
+            self._own_node(w, view)
+            for _, a, p in self._branch_dist(w, view, feats):
+                if a not in index:
+                    index[a] = len(actions)
+                    actions.append(a)
+                    num.append(np.zeros(n_h))
+                    prior_num.append(np.zeros(n_h))
+                num[index[a]] = num[index[a]] + wt * p
+                prior_num[index[a]] = prior_num[index[a]] + pr * p
+            tot = tot + wt
+            prior_tot += pr
+        probs = np.stack(num, axis=1)
+        fallback = tot <= 0.0
+        if fallback.any():
+            probs[fallback] = np.stack(prior_num, axis=1)[fallback] / prior_tot
+        probs[~fallback] /= tot[~fallback, None]
+        return actions, probs
+
+    def _branch_dist(self, w: _Walk, state: PublicState, feats: _HoldingFeatures
+                     ) -> list[tuple[int | None, Action, np.ndarray]]:
+        """What :meth:`act` would do from walk ``w``: ``(edge, real action, P per holding)`` entries.
+
+        Mirrors :meth:`act` exactly, the walk having been synced and handed to us
+        (:meth:`_own_node`) by the caller: the blueprint mixture with its deterministic
+        equity-rule overrides, or the passive-ahead / terminal fallback.
+        """
+        legal = state.legal
+        assert legal is not None
+        t = self.tree
+        street = int(state.street)
+        if self._in_sync(w, street) and t.player[w.node] == self._tree_seat(state, state.seat):
+            n = w.node
+            buckets = feats.bucket(street)
+            off = self.blueprint.offset[t.infoset_base[n] + buckets]
+            out: list[tuple[int | None, Action, np.ndarray]] = []
+            for j, edge in enumerate(t.actions(n)):
+                p = self.blueprint.sigma[off + j]
+                if (isinstance(edge, Fold) and n in w.soft and legal.can_call) or (
+                        isinstance(edge, Check) and not legal.can_check):
+                    call = self._equity_rule_mask(state, feats)
+                    out += [(j, Call(), p * call), (j, Fold(), p * ~call)]
+                else:
+                    out.append((j, self._real_action(state, j, node=n), p))
+            return out
+        if legal.can_check:
+            return [(None, Check(), np.ones(feats.n))]
+        call = self._equity_rule_mask(state, feats)
+        return [(None, Call(), call.astype(float)), (None, Fold(), (~call).astype(float))]
+
+    def _equity_rule_mask(self, state: PublicState, feats: _HoldingFeatures) -> np.ndarray:
+        """Vector form of :meth:`_equity_rule`: True where the holding calls."""
+        legal = state.legal
+        assert legal is not None and legal.can_call
+        odds = pot_odds(legal.call_amount, effective_pot(state))
+        return feats.equity(int(state.street)) > odds
+
     def _equity(self, state: PublicState, hole_cards: tuple[Card, ...]) -> float:
         """Our equity against a random hand: E[HS] postflop, the class equity preflop (deterministic)."""
         if state.street == Street.PREFLOP:
@@ -569,6 +736,89 @@ class CFRBot(Bot):
             pot_odds=pot_odds(call, effective_pot(state)) if legal.can_call else None,
             translations=tuple(w.translations), strategy=strategy, regrets=regrets, reached=reached,
             chosen=chosen, action=action, seconds=elapsed, notes=tuple(w.notes + notes))
+
+
+class _ForcedUniform:
+    """Stands in for the generator in a policy query: ``random()`` returns a fixed value.
+
+    0.0 picks the lower size of a mixed translation, 1.0 the upper one (``u < P(lower)``).
+    ``calls`` counts the draws, i.e. whether the translation mixed at all.
+    """
+
+    def __init__(self, value: float) -> None:
+        self.value = value
+        self.calls = 0
+
+    def random(self) -> float:
+        self.calls += 1
+        return self.value
+
+
+def _copy_walk(w: _Walk) -> _Walk:
+    return _Walk(w.key, w.node, w.done, w.records, w.over, dict(w.own), set(w.soft),
+                 list(w.translations), list(w.notes), w.last_p_low)
+
+
+def _merge_branches(branches: list[tuple[_Walk, np.ndarray, float]]) -> list[tuple[_Walk, np.ndarray, float]]:
+    """Merge branches whose walks behave identically from here on (same node, soft set, ``over``)."""
+    merged: dict[tuple, tuple[_Walk, np.ndarray, float]] = {}
+    for w, wt, pr in branches:
+        key = (w.node, w.over, frozenset(w.soft))
+        if key in merged:
+            w0, wt0, pr0 = merged[key]
+            merged[key] = (w0, wt0 + wt, pr0 + pr)
+        else:
+            merged[key] = (w, wt, pr)
+    return list(merged.values())
+
+
+def _class_equity(pair: list[int]) -> float:
+    return equity_vs_top(hand_class(tuple(Card.from_id(x) for x in pair)), 1.0)[0]
+
+
+_PREFLOP_EQ = np.array([_class_equity(pair) for pair in COMBO_CARDS.tolist()])
+"""Per combo: its class's equity against a random hand (what :meth:`CFRBot._equity` uses preflop)."""
+_PREFLOP_BUCKETS = np.array([preflop_bucket(pair) for pair in COMBO_CARDS.tolist()], dtype=np.int64)
+
+
+class _HoldingFeatures:
+    """Per-holding buckets and equities (vs a random hand) on each street of ``board``, vectorised.
+
+    Exactly the numbers :meth:`CFRBot.act` computes for one holding (same tables and
+    quantisation), for many holdings at once; cached per street.
+    """
+
+    def __init__(self, bot: CFRBot, board: tuple[Card, ...], combos: np.ndarray) -> None:
+        self.bot = bot
+        self.board = card_ids(board)
+        self.combos = combos
+        self.n = len(combos)
+        self._ehs: dict[int, np.ndarray] = {}
+
+    def _street_ehs(self, street: int) -> np.ndarray:
+        e = self._ehs.get(street)
+        if e is None:
+            board = self.board[:Street(street).board_size]
+            cards = self.bot.cards
+            if cards.config.ehs_method == "exact":
+                e = ehs_all(cards.tables, board)[self.combos]
+            else:
+                e = np.array([cards.ehs(list(COMBO_CARDS[c]), board) for c in self.combos.tolist()])
+            if np.isnan(e).any():
+                raise ValueError("a queried holding touches the board")
+            self._ehs[street] = e
+        return e
+
+    def bucket(self, street: int) -> np.ndarray:
+        if street == Street.PREFLOP:
+            return _PREFLOP_BUCKETS[self.combos]
+        edges = np.asarray(self.bot.cards.edges[street])
+        return np.searchsorted(edges, self._street_ehs(street), side="right")
+
+    def equity(self, street: int) -> np.ndarray:
+        if street == Street.PREFLOP:
+            return _PREFLOP_EQ[self.combos]
+        return self._street_ehs(street)
 
 
 @lru_cache(maxsize=1)
