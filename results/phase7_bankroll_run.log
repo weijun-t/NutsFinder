@@ -1,0 +1,343 @@
+estimates 0.9s
+CFRBot vs BayesBot                      +68.2 [+57.7,+78.3] sd_room 16.9 r_room 1.00 r_dup 0.75 Kelly 420 [370,491] B1% 961 [774,1189]
+CFRBot vs EquityBot                     +57.0 [+39.4,+74.4] sd_room 16.9 r_room 0.93 r_dup 0.63 Kelly 542 [419,772] B1% 1154 [797,1702]
+CFRBot vs PotOddsBot                    +60.3 [+41.8,+78.4] sd_room 20.8 r_room 1.07 r_dup 0.54 Kelly 677 [529,965] B1% 1658 [1114,2534]
+CFRBot vs CallStationBot               +223.4 [+211.0,+236.0] sd_room 18.6 r_room 0.87 r_dup 0.64 Kelly 180 [171,191] B1% 356 [301,414]
+CFRBot vs AlwaysRaiseBot               +175.6 [+154.6,+195.3] sd_room 34.5 r_room 0.97 r_dup 0.88 Kelly 704 [637,792] B1% 1562 [1303,1879]
+CFRBot vs RandomBot                    +217.5 [+206.2,+228.8] sd_room 15.4 r_room 0.91 r_dup 0.85 Kelly 123 [119,128] B1% 253 [211,295]
+BayesBot vs EquityBot                   +57.4 [+36.4,+79.3] sd_room 29.1 r_room 1.06 r_dup 0.37 Kelly 1398 [1017,2197] B1% 3407 [2142,5966]
+BayesBot vs PotOddsBot                 +392.5 [+367.6,+416.6] sd_room 33.7 r_room 0.97 r_dup 0.33 Kelly 302 [282,323] B1% 665 [447,926]
+BayesBot vs CallStationBot            +2224.1 [+2197.4,+2253.1] sd_room 75.0 r_room 1.09 r_dup 0.24 Kelly 254 [250,257] B1% 583 [453,725]
+BayesBot vs AlwaysRaiseBot            +1540.2 [+1515.9,+1564.3] sd_room 71.9 r_room 1.05 r_dup 0.31 Kelly 334 [329,339] B1% 772 [650,899]
+BayesBot vs RandomBot                  +803.4 [+772.7,+837.9] sd_room 47.5 r_room 1.67 r_dup 1.34 Kelly 176 [170,182] B1% 646 [543,762]
+BayesBot vs EquityBot (Phase 5)         +61.0 [+48.5,+73.6] sd_room 29.0 r_room 1.03 r_dup 0.38 Kelly 1337 [1116,1671] B1% 3172 [2368,4278]
+ruin CFR_vs_Bayes: 15.9s, MC B1% 860.0 nested {'reps': 200, 'paths': 20000, 'median': 860.0, 'ci95': [680.0, 1060.0]}
+ruin CFR_vs_Equity: 15.8s, MC B1% 990.0 nested {'reps': 200, 'paths': 20000, 'median': 995.0, 'ci95': [660.0, 1590.0]}
+ruin Bayes_vs_Equity: 15.7s, MC B1% 3460.0 nested {'reps': 200, 'paths': 20000, 'median': 3490.0, 'ci95': [2050.0, 5740.0]}
+kelly study 101.0s
+levels study 101.3s
+{
+ "kelly": [
+  {
+   "c": 0.25,
+   "growth_mc": 0.00035584443089190757,
+   "growth_mc_se": 3.1720194197759144e-07,
+   "growth_formula": 0.0003552198815705979,
+   "p_halve_mc": 0.00335,
+   "p_halve_ci": [
+    0.0026389864595385126,
+    0.004251762957998849
+   ],
+   "p_halve_formula": 0.007575581166305549,
+   "p_halve_formula_iid": 0.0078125,
+   "p_tenth_mc": 0.0,
+   "p_tenth_ci": [
+    0.0,
+    0.0001920360591335556
+   ],
+   "p_tenth_formula": 9.027599536830082e-08,
+   "wiped_out": 0,
+   "median_multiple": 53887766.123212844
+  },
+  {
+   "c": 0.5,
+   "growth_mc": 0.000612337726331824,
+   "growth_mc_se": 6.313997261775149e-07,
+   "growth_formula": 0.0006089483684067392,
+   "p_halve_mc": 0.093,
+   "p_halve_ci": [
+    0.08905267207161577,
+    0.09710364528051893
+   ],
+   "p_halve_formula": 0.12336110949521319,
+   "p_halve_formula_iid": 0.125,
+   "p_tenth_mc": 0.00055,
+   "p_tenth_ci": [
+    0.0003071485805603015,
+    0.0009846762389082073
+   ],
+   "p_tenth_formula": 0.0009571049249317809,
+   "wiped_out": 0,
+   "median_multiple": 20249795220722.227
+  },
+  {
+   "c": 0.75,
+   "growth_mc": 0.000769857730068291,
+   "growth_mc_se": 9.452775233390925e-07,
+   "growth_formula": 0.0007611854605084241,
+   "p_halve_mc": 0.26015,
+   "p_halve_ci": [
+    0.254116283408616,
+    0.2662758362889504
+   ],
+   "p_halve_formula": 0.3126792323522506,
+   "p_halve_formula_iid": 0.3149802624737183,
+   "p_tenth_mc": 0.0113,
+   "p_tenth_ci": [
+    0.009926096736944905,
+    0.01286159930725223
+   ],
+   "p_tenth_formula": 0.021025934448009702,
+   "wiped_out": 0,
+   "median_multiple": 5.482840496115812e+16
+  },
+  {
+   "c": 1.0,
+   "growth_mc": 0.0008267966068369937,
+   "growth_mc_se": 1.2616497536225915e-06,
+   "growth_formula": 0.0008119311578756523,
+   "p_halve_mc": 0.4381,
+   "p_halve_ci": [
+    0.43123632532406997,
+    0.4449874487400507
+   ],
+   "p_halve_formula": 0.49780519239649706,
+   "p_halve_formula_iid": 0.5,
+   "p_tenth_mc": 0.07235,
+   "p_tenth_ci": [
+    0.06884111653570775,
+    0.07602313190566916
+   ],
+   "p_tenth_formula": 0.09854921827349299,
+   "wiped_out": 0,
+   "median_multiple": 9.542186374762792e+17
+  },
+  {
+   "c": 1.5,
+   "growth_mc": 0.0006210258156456128,
+   "growth_mc_se": 1.914689457951058e-06,
+   "growth_formula": 0.0006089483684067392,
+   "p_halve_mc": 0.7592,
+   "p_halve_ci": [
+    0.7532248872243725,
+    0.7650755612825726
+   ],
+   "p_halve_formula": 0.7925374759067519,
+   "p_halve_formula_iid": 0.7937005259840998,
+   "p_tenth_mc": 0.4321,
+   "p_tenth_ci": [
+    0.42524836009801065,
+    0.43897771839881966
+   ],
+   "p_tenth_formula": 0.4619032959667527,
+   "wiped_out": 0,
+   "median_multiple": 34957252420265.92
+  },
+  {
+   "c": 1.75,
+   "growth_mc": 0.0003420611009335745,
+   "growth_mc_se": 2.2591614175344647e-06,
+   "growth_formula": 0.0003552198815705979,
+   "p_halve_mc": 0.8909,
+   "p_halve_ci": [
+    0.8865039378064941,
+    0.8951459284024754
+   ],
+   "p_halve_formula": 0.9051546245144888,
+   "p_halve_formula_iid": 0.9057236642639067,
+   "p_tenth_mc": 0.6992,
+   "p_tenth_ci": [
+    0.6928064050107308,
+    0.7055170878233106
+   ],
+   "p_tenth_formula": 0.718184733552408,
+   "wiped_out": 0,
+   "median_multiple": 30607063.212824322
+  },
+  {
+   "c": 2.0,
+   "growth_mc": -7.188003672096295e-05,
+   "growth_mc_se": 2.622366360236269e-06,
+   "growth_formula": 0.0,
+   "p_halve_mc": 0.9722,
+   "p_halve_ci": [
+    0.9698293179293533,
+    0.9743893232164009
+   ],
+   "p_halve_formula": 1.0,
+   "p_halve_formula_iid": 1.0,
+   "p_tenth_mc": 0.91505,
+   "p_tenth_ci": [
+    0.9111058436820542,
+    0.9188347471852593
+   ],
+   "p_tenth_formula": 1.0,
+   "wiped_out": 0,
+   "median_multiple": 0.034111423284022044
+  }
+ ],
+ "levels": [
+  {
+   "strategy": "fixed stake 1",
+   "p_ruin": 0.00525,
+   "p_ruin_ci": [
+    0.0043390659122380555,
+    0.0063509537682746
+   ],
+   "p_ruin_formula": 0.010026412962278613,
+   "p_half": 0.0708,
+   "p_half_ci": [
+    0.06732709647361916,
+    0.07443774727954107
+   ],
+   "median_multiple": 36.51901041666666,
+   "p_below_start": 0.00525,
+   "mean_stake_changes": null
+  },
+  {
+   "strategy": "stake levels x2, 1 Kelly (N = 417 bb)",
+   "p_ruin": 0.64955,
+   "p_ruin_ci": [
+    0.6429095554977711,
+    0.656133006516942
+   ],
+   "p_ruin_formula": null,
+   "p_half": 0.753,
+   "p_half_ci": [
+    0.746974849041337,
+    0.7589279807127414
+   ],
+   "median_multiple": 0.0,
+   "p_below_start": 0.64955,
+   "mean_stake_changes": 62.0116,
+   "ruin_by_hands": {
+    "5000": 0.09985,
+    "12500": 0.2295,
+    "25000": 0.40915,
+    "37500": 0.5426,
+    "50000": 0.64955
+   }
+  },
+  {
+   "strategy": "stake levels x2, 0.5 Kelly (N = 834 bb)",
+   "p_ruin": null,
+   "p_ruin_ci": null,
+   "p_ruin_formula": null,
+   "p_half": 0.05245,
+   "p_half_ci": [
+    0.0494454140214381,
+    0.05562647745509234
+   ],
+   "median_multiple": 9749625504.610937,
+   "p_below_start": 0.0,
+   "mean_stake_changes": 56.8999,
+   "ruin_by_hands": {
+    "5000": 0.0,
+    "12500": 0.0,
+    "25000": 0.0,
+    "37500": 0.0,
+    "50000": 0.0
+   },
+   "p_ruin_note": "not estimable by this bootstrap: W/s >= 834 bb > worst observed session drawdown 631 bb"
+  },
+  {
+   "strategy": "continuous 1 Kelly (every hand)",
+   "p_ruin": 0.0,
+   "p_ruin_ci": [
+    0.0,
+    0.0001920360591335556
+   ],
+   "p_ruin_formula": 0.0,
+   "p_half": 0.4367,
+   "p_half_ci": [
+    0.4298390419460594,
+    0.4435852698190269
+   ],
+   "median_multiple": 8.10916799536278e+17,
+   "p_below_start": 0.0,
+   "mean_stake_changes": null
+  },
+  {
+   "strategy": "continuous 0.5 Kelly (every hand)",
+   "p_ruin": 0.0,
+   "p_ruin_ci": [
+    0.0,
+    0.0001920360591335556
+   ],
+   "p_ruin_formula": 0.0,
+   "p_half": 0.09755,
+   "p_half_ci": [
+    0.09351490422591197,
+    0.10173966559808462
+   ],
+   "median_multiple": 18716751106719.164,
+   "p_below_start": 0.0,
+   "mean_stake_changes": null
+  }
+ ],
+ "uncertainty": [
+  {
+   "name": "CFRBot vs BayesBot",
+   "hands": 80000,
+   "bb100": 68.17125,
+   "se_bb100": 5.189310068196316,
+   "t": 13.136861953538027,
+   "kelly_bankroll": 419.8092987240703,
+   "kelly_bankroll_at_mu_ci": [
+    365.30616899873394,
+    493.42801468563886
+   ],
+   "c_shrinkage_opt": 0.994238872765408,
+   "growth_ratio_full_plugin": 0.9942054898552017,
+   "growth_ratio_half_plugin": 0.7485513724638004,
+   "c_at_lower_bound": 0.8508015074732416,
+   "c_bootstrap_posterior_mean": 0.9998918960489357,
+   "c_robust_q05": 0.8728320802005012
+  },
+  {
+   "name": "CFRBot vs BayesBot (first 20 sessions)",
+   "hands": 10000,
+   "bb100": 44.525,
+   "se_bb100": 13.922841654520177,
+   "t": 3.1979822154728414,
+   "kelly_bankroll": 616.1133916316815,
+   "kelly_bankroll_at_mu_ci": [
+    381.9942735052933,
+    1591.5573297635917
+   ],
+   "c_shrinkage_opt": 0.9109297264304796,
+   "growth_ratio_full_plugin": 0.90222047762285,
+   "growth_ratio_half_plugin": 0.7255551194057125,
+   "c_at_lower_bound": 0.3871135397448726,
+   "c_bootstrap_posterior_mean": 0.9959085197909503,
+   "c_robust_q05": 0.4838095238095238
+  },
+  {
+   "name": "BayesBot vs EquityBot",
+   "hands": 25000,
+   "bb100": 57.384,
+   "se_bb100": 10.844208596372196,
+   "t": 5.291672461851864,
+   "kelly_bankroll": 1398.0692833392727,
+   "kelly_bankroll_at_mu_ci": [
+    1020.1956535304047,
+    2220.5438292980502
+   ],
+   "c_shrinkage_opt": 0.9655193785161965,
+   "growth_ratio_full_plugin": 0.9642880067961006,
+   "growth_ratio_half_plugin": 0.7410720016990251,
+   "c_at_lower_bound": 0.6296067048499668,
+   "c_bootstrap_posterior_mean": 1.0039063709503895,
+   "c_robust_q05": 0.6833082706766916
+  },
+  {
+   "name": "BayesBot vs EquityBot (first 10 sessions)",
+   "hands": 5000,
+   "bb100": 55.67999999999999,
+   "se_bb100": 24.72528530337584,
+   "t": 2.251945703227044,
+   "kelly_bankroll": 1436.2749309825183,
+   "kelly_bankroll_at_mu_ci": [
+    767.9142580116139,
+    11078.81747779458
+   ],
+   "c_shrinkage_opt": 0.835289529596132,
+   "growth_ratio_full_plugin": 0.8028103255603998,
+   "growth_ratio_half_plugin": 0.7007025813901,
+   "c_at_lower_bound": 0.12964153745300552,
+   "c_bootstrap_posterior_mean": 1.0095814095182374,
+   "c_robust_q05": 0.29927318295739347
+  }
+ ]
+}
+saved 2026-11-18_phase7_bankroll.json; total 102.6s
