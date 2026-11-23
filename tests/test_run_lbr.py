@@ -129,3 +129,28 @@ def test_verdict_is_the_preregistered_rule_and_flags_rule_dependence():
 
 def test_memory_formatting_never_crashes():
     assert rl._fmt_mb(None) == "n/a" and rl._fmt_mb(float("nan")) == "n/a" and rl._fmt_mb(12.4) == "12 MB"
+
+
+def test_torn_line_then_two_crashes_and_resumes_equal_an_uninterrupted_run(cheap, tmp_path):
+    full = rl.main(PILOT)
+    for f in tmp_path.iterdir():
+        f.unlink()
+    with pytest.raises(rl._Interrupted):
+        rl.main(PILOT, stop_after=4)
+    partial = next(tmp_path.glob("*_partial.jsonl"))
+    with open(partial, "a", encoding="utf-8") as f:  # crash in the middle of a write
+        f.write('{"rule": "ev", "opponent": "Bay')
+    with pytest.raises(rl._Interrupted):  # resume, then crash again after 3 more sessions
+        rl.main(PILOT + ["--resume-partial"], stop_after=3)
+    lines = partial.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1 + 4 + 3 and all(json.loads(x) for x in lines)  # torn line gone, every line valid
+    resumed = rl.main(PILOT + ["--resume-partial"])
+    assert resumed["meta"]["resumed_sessions"] == 7
+    assert _strip(resumed["results"]) == _strip(full["results"])
+
+
+def test_append_after_a_torn_write_starts_a_new_line(tmp_path):
+    path = tmp_path / "log.jsonl"
+    path.write_text('{"header": {}}\n{"torn', encoding="utf-8")
+    rl._append_line(path, {"a": 1})
+    assert path.read_text(encoding="utf-8").splitlines()[-1] == '{"a": 1}'

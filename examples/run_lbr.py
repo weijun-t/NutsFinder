@@ -10,7 +10,7 @@ Once only, crash-safe. Every finished session (any rule, any opponent) is append
 ``results/phase6_lbr_official_partial.jsonl`` (pilots: ``..._pilot_seed<s>_<rules>_partial.jsonl``)
 and flushed to disk, after a header line identifying the design, commit, blueprint and preflop
 table. ``--resume-partial`` re-reads it (the header must match exactly, a torn last line is
-ignored) and plays only the missing sessions; sessions are deterministic, so the final numbers
+dropped) and plays only the missing sessions; sessions are deterministic, so the final numbers
 are those of an uninterrupted run (timings aside). An OFFICIAL run refuses to start if any
 non-pilot ``results/phase6_lbr_*.json`` / ``.md`` exists (the run happens once), refuses a
 partial log unless ``--resume-partial`` is given, refuses ``--allow-dirty``, and refuses to
@@ -240,9 +240,27 @@ def session_from_json(d: dict) -> LBRSession:
     return LBRSession(**{**d, "hands": hands})
 
 
+def _ends_with_newline(path: Path) -> bool:
+    """True for a missing/empty file or one whose last byte is a newline."""
+    if not path.exists() or path.stat().st_size == 0:
+        return True
+    with open(path, "rb") as f:
+        f.seek(-1, os.SEEK_END)
+        return f.read(1) == b"\n"
+
+
+def _drop_torn_last_line(path: Path, good_lines: list[str]) -> None:
+    """Rewrite the log without its torn last line (temp file + atomic replace), so later appends stay valid."""
+    tmp = path.with_suffix(".tmp")
+    tmp.write_bytes(("\n".join(good_lines) + "\n").encode("utf-8"))
+    os.replace(tmp, path)
+
+
 def _append_line(path: Path, record: dict) -> None:
-    with open(path, "a", encoding="utf-8") as f:
-        f.write(json.dumps(record, default=float) + "\n")
+    """Append one JSON line (fsynced). If the file ends mid-line (a torn write), start a new line first."""
+    lead = "" if _ends_with_newline(path) else "\n"
+    with open(path, "a", encoding="utf-8", newline="\n") as f:
+        f.write(lead + json.dumps(record, default=float) + "\n")
         f.flush()
         os.fsync(f.fileno())
 
@@ -258,7 +276,8 @@ def start_partial(path: Path, header: dict) -> None:
 def read_partial(path: Path, header: dict) -> dict[tuple[str, str, int], tuple[LBRSession, float]]:
     """The finished sessions of a partial log whose header equals ``header`` (exits otherwise).
 
-    A torn last line (crash while writing) is ignored; a bad line anywhere else is an error.
+    A torn last line (crash while writing) is dropped and the file rewritten without it, so a second
+    crash and resume still read cleanly; a bad line anywhere else is an error.
     """
     lines = path.read_text(encoding="utf-8").splitlines()
     if not lines:
@@ -278,7 +297,8 @@ def read_partial(path: Path, header: dict) -> dict[tuple[str, str, int], tuple[L
             rec = json.loads(line)
         except ValueError:
             if i == len(lines):
-                print(f"{path}: ignoring a torn last line", flush=True)
+                print(f"{path}: dropping a torn last line", flush=True)
+                _drop_torn_last_line(path, lines[: i - 1])
                 break
             sys.exit(f"{path}: line {i} is corrupt")
         sess = session_from_json(rec["session"])

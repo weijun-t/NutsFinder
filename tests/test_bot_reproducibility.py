@@ -12,6 +12,7 @@ covered automatically as soon as it is exported from ``nutsfinder.bots``.
 
 from __future__ import annotations
 
+import functools
 import inspect
 
 import pytest
@@ -30,6 +31,22 @@ ALL_BOTS = [
     if inspect.isclass(obj := getattr(bots, name)) and issubclass(obj, Bot)
 ]
 
+# Bots whose constructor needs arguments get an explicit factory here. SwitchBot: a RANDOM first style
+# (so reseed forwarding is exercised) and a switch inside the 25-pair / 50-hand matches below.
+FACTORIES = {
+    bots.SwitchBot: functools.partial(bots.SwitchBot, bots.RandomBot, bots.RaiseOrFoldBot, 10),
+}
+
+
+def _factory(bot: type[Bot]):
+    return FACTORIES.get(bot, bot)
+
+
+def test_every_exported_bot_can_be_built() -> None:
+    # A new bot that needs constructor arguments must be added to FACTORIES, not silently skipped.
+    for bot in ALL_BOTS:
+        assert isinstance(_factory(bot)(), bot)
+
 
 def test_all_bots_are_found() -> None:
     assert {b.__name__ for b in ALL_BOTS} >= {
@@ -44,9 +61,10 @@ def test_all_bots_are_found() -> None:
 @pytest.mark.parametrize("bot", ALL_BOTS, ids=lambda b: b.__name__)
 @pytest.mark.parametrize("opponent", ["RandomBot", "self"])
 def test_same_master_seed_gives_identical_matches(bot: type[Bot], opponent: str) -> None:
-    other = bot if opponent == "self" else bots.RandomBot
+    make = _factory(bot)
+    other = make if opponent == "self" else bots.RandomBot
     for match, n in ((duplicate_match, 25), (plain_match, 50)):
-        first = match(bot, other, n, master_seed=2024)
-        second = match(bot, other, n, master_seed=2024)
+        first = match(make, other, n, master_seed=2024)
+        second = match(make, other, n, master_seed=2024)
         assert first.unit_results == second.unit_results
         assert [g.log for g in first.games] == [g.log for g in second.games]
