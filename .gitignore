@@ -10,3 +10,4 @@ results/*.jsonl
 .hypothesis/
 models/
 *.npz.tmp
+results/*.tmp

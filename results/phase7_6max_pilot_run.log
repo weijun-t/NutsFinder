@@ -1,0 +1,62 @@
+PILOT (NOT OFFICIAL): master seed 75025, 288 rooms (250 hands each), commit 7cb9678 + uncommitted changes
+[6.5 min] 50/288 rooms
+[12.5 min] 100/288 rooms
+[18.2 min] 150/288 rooms
+[24.0 min] 200/288 rooms
+[29.5 min] 250/288 rooms
+[32.5 min] 288/288 rooms
+- date 2026-11-24; commit 7cb9678 + uncommitted changes; master seed 75025; 22 processes; run time 1953 s
+- sessions per arm {'mixed': 16}; 250 blocks x 6 rooms = 1,500 test-seat hands per session; seats rotated (6-room duplicate per deal)
+- model (CFR arm): not used
+
+**Verdict: MultiBayesBot vs MultiEquityBot in the mixed field: no detectable edge (tier 3 does not count in this field); about 4,015 sessions would be needed to detect the observed difference.** one primary test (alpha 0.05, two-sided); 2 secondary paired differences and 3 absolute win rates are descriptive (no correction; expect about 1 in 20 to exclude 0 by chance). Field-dependent: these numbers hold for this field (and the 5 cyclic seatings of it) only.
+
+| comparison (same seat, same deals) | sessions | hands per arm | D bb/100 | 95% CI | SE | SD/session | p | verdict | sessions for observed D |
+|---|---:|---:|---:|---|---:|---:|---:|---|---:|
+| mixed|Bayes-Equity **(primary)** | 16 | 24,000 | -8.0 | [-96.5, +80.5] | 45.2 | 180.7 | 0.86 | no detectable edge | 4,015 |
+| mixed|Equity-PotOdds (secondary) | 16 | 24,000 | -117.1 | [-205.2, -29.1] | 44.9 | 179.6 | 0.0091 | loses | 19 |
+| mixed|Bayes-PotOdds (secondary) | 16 | 24,000 | -125.1 | [-209.3, -40.9] | 43.0 | 171.9 | 0.00359 | loses | 15 |
+
+Absolute win rates against the field (descriptive):
+
+| test bot | bb/100 | 95% CI | SE | SD/session | SD/hand (bb) | VPIP | PFR | blueprint share |
+|---|---:|---|---:|---:|---:|---:|---:|---:|
+| mixed|Bayes | +1193.0 | [+1084.8, +1301.3] | 55.2 | 220.9 | 109.4 | 44% | 20% | - |
+| mixed|Equity | +1201.0 | [+1104.4, +1297.6] | 49.3 | 197.1 | 103.6 | 43% | 12% | - |
+| mixed|PotOdds | +1318.2 | [+1223.8, +1412.5] | 48.1 | 192.5 | 117.2 | 49% | 10% | - |
+
+### mixed|Bayes
+
+- by position (bb/100 in that position, 95% CI): UTG +1169 [+809.9, +1528.3], HJ +1158 [+742.2, +1574.5], CO +1013 [+697.1, +1329.6], BTN +1250 [+826.4, +1674.3], SB +1246 [+868.2, +1622.9], BB +1321 [+979.9, +1663.1]
+- by the test bot's exit street (fold street or showdown; contribution to bb/100; share of hands): preflop -26.2 [-29.3, -23.0] (60%), flop -46.5 [-49.3, -43.7] (7%), turn -17.6 [-20.4, -14.9] (1%), river -2.3 [-3.9, -0.7] (0%), showdown +1285.7 [+1177.0, +1394.3] (32%)
+- fold to a bet: preflop 43% of 33,242, flop 43% of 4,134, turn 37% of 499, river 10% of 94
+- field bots' bb/100 per hand they played: AlwaysRaise -938, CallStation -846, Equity +1177, PotOdds +1273, Random -1859
+
+### mixed|Equity
+
+- by position (bb/100 in that position, 95% CI): UTG +1221 [+819.5, +1621.8], HJ +1133 [+722.1, +1544.2], CO +995 [+675.2, +1315.3], BTN +1208 [+843.5, +1571.9], SB +1240 [+846.8, +1632.4], BB +1410 [+1074.6, +1744.9]
+- by the test bot's exit street (fold street or showdown; contribution to bb/100; share of hands): preflop -25.9 [-28.9, -22.8] (62%), flop -67.4 [-72.1, -62.8] (10%), turn -20.7 [-23.8, -17.6] (1%), river -3.0 [-5.1, -0.9] (0%), showdown +1318.0 [+1220.3, +1415.7] (27%)
+- fold to a bet: preflop 45% of 33,010, flop 49% of 4,909, turn 40% of 531, river 12% of 81
+- field bots' bb/100 per hand they played: AlwaysRaise -963, CallStation -901, Equity +1237, PotOdds +1318, Random -1892
+
+### mixed|PotOdds
+
+- by position (bb/100 in that position, 95% CI): UTG +1303 [+863.0, +1743.7], HJ +1207 [+787.8, +1627.1], CO +1207 [+939.9, +1474.5], BTN +1403 [+963.4, +1843.1], SB +1399 [+949.7, +1847.6], BB +1389 [+1004.6, +1773.6]
+- by the test bot's exit street (fold street or showdown; contribution to bb/100; share of hands): preflop -11.4 [-12.0, -10.9] (52%), flop -54.3 [-57.9, -50.7] (10%), turn -29.6 [-34.2, -25.0] (1%), river -5.0 [-7.1, -2.9] (0%), showdown +1418.5 [+1318.5, +1518.5] (37%)
+- fold to a bet: preflop 37% of 34,055, flop 38% of 6,231, turn 31% of 1,021, river 9% of 204
+- field bots' bb/100 per hand they played: AlwaysRaise -1037, CallStation -928, Equity +1228, PotOdds +1297, Random -1878
+
+- mixed|Bayes-Equity by position: UTG -52 [-230.6, +127.5], HJ +25 [-118.3, +168.6], CO +18 [-214.7, +250.9], BTN +43 [-213.4, +298.8], SB +6 [-156.1, +168.0], BB -88 [-248.9, +72.3]
+  - by exit street: preflop -0.3 [-2.6, +1.9], flop +20.9 [+15.2, +26.6], turn +3.1 [-0.7, +6.9], river +0.7 [-1.6, +2.9], showdown -32.4 [-121.4, +56.7]; hands with equal net in both arms 81%
+
+- mixed|Equity-PotOdds by position: UTG -83 [-335.6, +170.2], HJ -74 [-184.7, +36.1], CO -212 [-397.2, -26.6], BTN -196 [-370.4, -20.7], SB -159 [-347.6, +29.5], BB +21 [-174.4, +215.8]
+  - by exit street: preflop -14.4 [-17.2, -11.6], flop -13.2 [-15.8, -10.5], turn +8.9 [+4.4, +13.4], river +2.0 [-0.7, +4.7], showdown -100.5 [-189.7, -11.2]; hands with equal net in both arms 80%
+
+- mixed|Bayes-PotOdds by position: UTG -134 [-373.9, +105.4], HJ -49 [-197.0, +98.8], CO -194 [-394.3, +6.7], BTN -153 [-338.3, +32.5], SB -153 [-368.7, +62.5], BB -68 [-263.6, +128.4]
+  - by exit street: preflop -14.7 [-17.5, -12.0], flop +7.7 [+2.9, +12.5], turn +12.0 [+8.0, +16.1], river +2.7 [+1.1, +4.3], showdown -132.8 [-221.4, -44.3]; hands with equal net in both arms 81%
+
+- integrity (rotation: every bot in every seat once per deal; pairing: same deals/reseeds/field in every arm): ok
+- peak memory: worker working set max 139 MB; parent 79 MB
+
+wrote C:\School\Intern\Projects\NutsFinder\results\2026-11-24_6max_pilot_seed75025_summary.json
+wrote 12 files (rooms also in phase7_6max_pilot_seed75025_partial.jsonl)
