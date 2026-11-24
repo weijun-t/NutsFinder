@@ -3,9 +3,13 @@
 Endpoints (all JSON unless noted; errors are ``{"error": "..."}`` with a 4xx/5xx status)::
 
     GET  /                       the page (index.html)
-    GET  /api/bots               the bots on offer (CFRBot only if a trained model loaded)
+    GET  /api/bots               the bots on offer (CFRBot only if a trained model loaded);
+                                 "multi_bots": the multiway bots (3..8 seats)
     POST /api/session            {} -> {"session": id}  (a fresh session id)
-    POST /api/play/new           {session, bot, seed?}   new opponent, deals hand 1
+    POST /api/play/new           {session, bot, seed?}   new heads-up opponent, deals hand 1
+                                 {session, players: 3..8, hero_seat?, seats?, fill?, seed?, keep_stacks?}
+                                 a multiway table: seats[i] is the bot key of seat i (ignored at
+                                 hero_seat; missing/null entries get ``fill``)
     POST /api/play/next          {session, expected_step}          deal the next hand
     POST /api/play/act           {session, action, amount?, expected_step}
                                  action: fold|check|call|bet|raise
@@ -14,6 +18,7 @@ Endpoints (all JSON unless noted; errors are ``{"error": "..."}`` with a 4xx/5xx
     POST /api/play/end           {session}               end the session, reveal its seed/secret
     GET  /api/play/state?session=ID
     POST /api/replay/start       {session, bot_a, bot_b, seed?, hands}
+                                 {session, bots: [3..8 multiway keys], seed?, hands}
     POST /api/replay/cancel      {session}
     GET  /api/replay/status?session=ID
     GET  /api/replay/hand?session=ID&index=N
@@ -49,6 +54,13 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from nutsfinder.table.multiway import (
+    MAX_PLAYERS,
+    MIN_MULTI_PLAYERS,
+    MultiCatalog,
+    MultiPlaySession,
+    MultiReplayJob,
+)
 from nutsfinder.table.session import (
     MAX_REPLAY_HANDS,
     BotCatalog,
@@ -63,6 +75,7 @@ __all__ = ["TableApp", "make_server", "serve", "MAX_SESSIONS"]
 
 MAX_SESSIONS = 32
 MAX_BODY = 64 * 1024
+MAX_DRAIN = 1024 * 1024  # an oversized body is read (and dropped) up to this much before the 413
 PAGE = Path(__file__).with_name("index.html")
 
 
@@ -75,8 +88,8 @@ class HttpError(Exception):
 
 class _Session:
     def __init__(self) -> None:
-        self.play: PlaySession | None = None
-        self.replay: ReplayJob | None = None
+        self.play: PlaySession | MultiPlaySession | None = None
+        self.replay: ReplayJob | MultiReplayJob | None = None
 
 
 def _user_seed(value: Any) -> int | None:
@@ -94,6 +107,7 @@ class TableApp:
 
     def __init__(self, catalog: BotCatalog) -> None:
         self.catalog = catalog
+        self.multi = MultiCatalog(catalog)
         self._sessions: OrderedDict[str, _Session] = OrderedDict()
         self._lock = threading.Lock()
 
@@ -119,13 +133,13 @@ class TableApp:
             self._sessions.move_to_end(sid)
             return s
 
-    def _play(self, body: dict[str, Any]) -> PlaySession:
+    def _play(self, body: dict[str, Any]) -> PlaySession | MultiPlaySession:
         p = self.session(body.get("session")).play
         if p is None:
             raise HttpError(409, "no game yet: choose an opponent and start")
         return p
 
-    def _locked(self, play: PlaySession, fn, expected_step: Any = None, check_step: bool = False) -> dict[str, Any]:
+    def _locked(self, play: PlaySession | MultiPlaySession, fn, expected_step: Any = None, check_step: bool = False) -> dict[str, Any]:
         if not play.lock.acquire(blocking=False):
             raise HttpError(409, "busy: the bot is still thinking")
         try:
@@ -136,7 +150,7 @@ class TableApp:
         finally:
             play.lock.release()
 
-    def _replay(self, sid: Any) -> ReplayJob:
+    def _replay(self, sid: Any) -> ReplayJob | MultiReplayJob:
         r = self.session(sid).replay
         if r is None:
             raise HttpError(409, "no replay yet: start one")
@@ -148,7 +162,9 @@ class TableApp:
         match path:
             case "/api/bots":
                 return {"bots": self.catalog.listing(), "max_replay_hands": MAX_REPLAY_HANDS,
-                        "turn_tables_loaded": self.catalog.turn_tables_loaded}
+                        "turn_tables_loaded": self.catalog.turn_tables_loaded,
+                        "multi_bots": self.multi.listing(), "min_multi_players": MIN_MULTI_PLAYERS,
+                        "max_players": MAX_PLAYERS}
             case "/api/play/state":
                 return self._play({"session": query.get("session")}).snapshot()
             case "/api/replay/status":
@@ -166,6 +182,10 @@ class TableApp:
                 return {"session": self.new_session()}
             case "/api/play/new":
                 s = self.session(body.get("session"))
+                if body.get("players") not in (None, 2, "2"):
+                    play = self._new_multi(body)
+                    s.play = play
+                    return self._locked(play, play.start_hand)
                 key = body.get("bot")
                 if not isinstance(key, str):
                     raise HttpError(400, "bot must be a bot key, see /api/bots")
@@ -193,6 +213,18 @@ class TableApp:
                 return self._locked(play, play.end_session)
             case "/api/replay/start":
                 s = self.session(body.get("session"))
+                if body.get("bots") is not None:
+                    keys = self._multi_keys(body.get("bots"), "bots")
+                    hands = parse_digits(body.get("hands"), "hands", 4)
+                    seed = _user_seed(body.get("seed"))
+                    if seed is None:
+                        seed = secrets.randbits(64)
+                    mjob = MultiReplayJob(self.multi, keys, seed, hands)
+                    if s.replay is not None:
+                        s.replay.cancel()
+                    s.replay = mjob
+                    mjob.start()
+                    return mjob.status_payload()
                 a, b = body.get("bot_a"), body.get("bot_b")
                 for key in (a, b):
                     if not isinstance(key, str):
@@ -215,6 +247,50 @@ class TableApp:
                 job.cancel()
                 return job.status_payload()
         raise HttpError(404, f"no such endpoint: POST {path}")
+
+    # --- multiway ---------------------------------------------------------------------
+
+    def _check_multi_key(self, key: Any) -> str:
+        if not isinstance(key, str):
+            raise HttpError(400, "seat bots must be multiway bot keys, see multi_bots in /api/bots")
+        ok, why = self.multi.available(key)
+        if not ok:
+            raise HttpError(400, f"bot {key!r} is not available at a multiway table: {why}")
+        return key
+
+    def _multi_keys(self, keys: Any, what: str) -> list[str]:
+        if not isinstance(keys, list) or not MIN_MULTI_PLAYERS <= len(keys) <= MAX_PLAYERS:
+            raise HttpError(400, f"{what} must be a list of {MIN_MULTI_PLAYERS} to {MAX_PLAYERS} bot keys")
+        return [self._check_multi_key(k) for k in keys]
+
+    def _new_multi(self, body: dict[str, Any]) -> MultiPlaySession:
+        n = parse_digits(body.get("players"), "players", 1)
+        if not MIN_MULTI_PLAYERS <= n <= MAX_PLAYERS:
+            raise HttpError(400, f"players must be 2 (heads-up) or {MIN_MULTI_PLAYERS} to {MAX_PLAYERS}")
+        hero = body.get("hero_seat", 0)
+        hero = parse_digits(0 if hero is None else hero, "hero_seat", 1)
+        if not 0 <= hero < n:
+            raise HttpError(400, f"hero_seat must be 0..{n - 1}")
+        seats = body.get("seats")
+        if seats is None:
+            seats = [None] * n
+        if not isinstance(seats, list) or len(seats) != n:
+            raise HttpError(400, f"seats must be a list of {n} entries (bot keys; yours is ignored)")
+        fill = body.get("fill")
+        keys: list[str | None] = []
+        for seat, key in enumerate(seats):
+            if seat == hero:
+                keys.append(None)
+                continue
+            if key is None or key == "":
+                if fill is None:
+                    raise HttpError(400, f"seat {seat} has no bot (give seats[{seat}] or fill)")
+                key = fill
+            keys.append(self._check_multi_key(key))
+        keep = body.get("keep_stacks", False)
+        if not isinstance(keep, bool):
+            raise HttpError(400, "keep_stacks must be true or false")
+        return MultiPlaySession.create(self.multi, keys, hero, _user_seed(body.get("seed")), keep_stacks=keep)
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -285,16 +361,22 @@ class _Handler(BaseHTTPRequestHandler):
                 pass
 
     def _body(self) -> dict[str, Any]:
-        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
-        if ctype != "application/json":
-            raise HttpError(403, "POST requests must have Content-Type: application/json")
         length = (self.headers.get("Content-Length") or "0").strip()
         if not (length.isascii() and length.isdigit() and len(length) <= 9):
             raise HttpError(400, "bad Content-Length")
         n = int(length)
+        # Read (at most MAX_BODY of) the body before any refusal: answering with unread bytes in
+        # the socket makes Windows reset the connection, so the client saw ConnectionAbortedError
+        # instead of the 403/413.
+        raw = self.rfile.read(min(n, MAX_BODY)) if n else b""
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if ctype != "application/json":
+            self._drain(n - len(raw))
+            raise HttpError(403, "POST requests must have Content-Type: application/json")
         if n > MAX_BODY:
+            self._drain(n - len(raw))
             raise HttpError(413, "request body too large")
-        raw = self.rfile.read(n) if n else b"{}"
+        raw = raw or b"{}"
         try:
             data = json.loads(raw.decode("utf-8") or "{}")
         except (ValueError, RecursionError):  # bad UTF-8/JSON, ints over the digit limit, deep nesting
@@ -302,6 +384,17 @@ class _Handler(BaseHTTPRequestHandler):
         if not isinstance(data, dict):
             raise HttpError(400, "body must be a JSON object")
         return data
+
+    def _drain(self, left: int) -> None:
+        """Read and drop the unread rest of a refused body, at most up to MAX_DRAIN in total."""
+        left = min(left, MAX_DRAIN - MAX_BODY)
+        while left > 0:
+            chunk = self.rfile.read(min(left, 64 * 1024))
+            if not chunk:
+                break
+            left -= len(chunk)
+        if left > 0 or int(self.headers.get("Content-Length") or 0) > MAX_DRAIN:
+            self.close_connection = True  # bytes left in the socket: do not reuse it
 
     def do_GET(self) -> None:  # noqa: N802 - stdlib name
         self._handle("GET")

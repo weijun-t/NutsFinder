@@ -141,6 +141,32 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 3px 0; font: 11.5px
 #hands tr.sel { background: #2a3442; }
 .recent { display: flex; flex-wrap: wrap; gap: 3px; }
 .recent span { font-size: 11px; padding: 0 5px; border-radius: 6px; background: var(--panel2); }
+/* ---- multiway ---- */
+.seatcfg { display: flex; flex-wrap: wrap; gap: 6px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; margin: -4px 0 10px; font-size: 13px; }
+.seatcfg label { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); }
+.seatcfg select { padding: 2px 4px; }
+.seatcfg .you { color: var(--accent); font-weight: 600; }
+.plate .pos-tag { display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: .4px; padding: 0 5px; border-radius: 6px; background: #2a3442; color: #cfd8e3; margin-right: 4px; }
+.plate .pos-tag.btn { background: #fafafa; color: #111; }
+.plate .allin { display: inline-block; font-size: 10.5px; font-weight: 800; padding: 0 5px; border-radius: 6px; background: var(--bad); color: #fff; }
+.seat.folded .hole { opacity: 0; }
+.seat.hero .plate { border-color: #5aa9ff; }
+.seat.hero.act .plate { border-color: var(--accent); }
+.muck { font-size: 11px; color: var(--muted); align-self: center; }
+.pots { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; }
+.pots span { background: rgba(0,0,0,.35); padding: 0 8px; border-radius: 10px; font-size: 12px; white-space: nowrap; }
+.potres { display: flex; flex-direction: column; align-items: center; gap: 2px; max-width: 100%; }
+.potres div { background: rgba(0,0,0,.55); border: 1px solid var(--good); color: #c9f5dc; padding: 1px 10px; border-radius: 10px; font-size: 12px; text-align: center; }
+.table.multi .banner { white-space: normal; text-align: center; max-width: 46vw; font-size: 13px; }
+.table.many { aspect-ratio: 1.9 / 1; }
+.table.many .plate { min-width: 100px; padding: 2px 7px; font-size: 12.5px; }
+.table.many .plate .nm { max-width: 118px; overflow: hidden; text-overflow: ellipsis; }
+.table.many .seat { gap: 2px; }
+.table.many .lastact { top: -10px; right: -6px; font-size: 10.5px; }
+.table-wrap.many { --card-w: clamp(28px, 2.7vw, 44px); padding-left: 64px; padding-right: 64px; }
+.stand { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.stand td, .stand th { padding: 1px 6px; text-align: left; }
+.stand th { color: var(--muted); font-weight: 500; }
 [hidden] { display: none !important; }
 </style>
 </head>
@@ -158,16 +184,23 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 3px 0; font: 11.5px
   <main>
     <!-- PLAY toolbar -->
     <div class="toolbar" id="playBar">
-      <label>Opponent <select id="botSel"></select></label>
+      <label>Players <select id="nPlayers"></select></label>
+      <label id="oppLbl">Opponent <select id="botSel"></select></label>
+      <label id="heroLbl" hidden>Your seat <select id="heroSeat"></select></label>
+      <label id="fillLbl" hidden title="Put this bot in every other seat (change single seats below)">Fill with <select id="fillSel"></select></label>
+      <label id="keepLbl" hidden title="Stacks carry over between hands (side pots appear); a busted seat rebuys 10,000. Off: everyone starts each hand with 10,000."><input type="checkbox" id="keepStacks"> Keep stacks</label>
       <label>Seed <input id="seed" type="text" inputmode="numeric" placeholder="random" size="9"></label>
       <button id="newGame" class="primary">New game</button>
       <div class="score" id="score"></div>
       <label class="peek" title="Shows the bot's equity/strategy while the hand is still running. This is peeking: you see how strong it thinks its hand is."><input type="checkbox" id="live"> Show reasoning live (peeking)</label>
     </div>
+    <div class="seatcfg" id="seatCfg" hidden></div>
     <!-- REPLAY toolbar -->
     <div class="toolbar" id="replayBar" hidden>
-      <label>Bot A <select id="botA"></select></label>
-      <label>vs Bot B <select id="botB"></select></label>
+      <label>Players <select id="rPlayers"></select></label>
+      <label id="botALbl">Bot A <select id="botA"></select></label>
+      <label id="botBLbl">vs Bot B <select id="botB"></select></label>
+      <label id="rFillLbl" hidden>Fill with <select id="rFillSel"></select></label>
       <label>Seed <input id="rseed" type="text" inputmode="numeric" placeholder="random" size="9"></label>
       <label>Hands <input id="rhands" type="number" min="1" max="200" value="20"></label>
       <button id="runReplay" class="primary">Run</button>
@@ -177,12 +210,15 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 3px 0; font: 11.5px
       <button id="exportReplay" disabled title="Download every hand and every decision as JSON">Export JSON</button>
     </div>
 
-    <div class="table-wrap"><div class="table" id="table">
+    <div class="seatcfg" id="rseatCfg" hidden></div>
+    <div class="table-wrap" id="tableWrap"><div class="table" id="table">
       <div class="rail"></div><div class="felt"></div>
       <div class="center">
         <div class="pot" id="pot">&nbsp;</div>
+        <div class="pots" id="pots" hidden></div>
         <div class="board" id="board"></div>
         <div class="banner" id="banner" hidden></div>
+        <div class="potres" id="potres" hidden></div>
       </div>
       <div id="seats"></div>
     </div></div>
@@ -221,18 +257,23 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 3px 0; font: 11.5px
   <aside>
     <div class="panel" id="handsPanel" hidden>
       <h3>Hands <span class="r" id="rtotal"></span></h3>
+      <div id="rstand"></div>
       <div id="hands"></div>
     </div>
     <div class="panel">
-      <h3>How the bot thought <span class="r"><button id="botCardsBtn2" hidden></button></span></h3>
+      <h3><span id="reasonTitle">How the bot thought</span> <span class="r"><select id="reasonSeat" hidden title="Show the decisions of one bot"></select><button id="botCardsBtn2" hidden></button></span></h3>
       <div id="reasoning"><div class="hidden-note">Start a game to see the bot's decisions.</div></div>
     </div>
     <div class="panel">
       <h3>Action log</h3>
       <div id="log"></div>
     </div>
+    <div class="panel" id="standPanel" hidden>
+      <h3>Standings (session net)</h3>
+      <div id="stand"></div>
+    </div>
     <div class="panel" id="modelPanel" hidden>
-      <h3>What BayesBot has learned about you</h3>
+      <h3 id="modelTitle">What BayesBot has learned about you</h3>
       <pre id="model"></pre>
     </div>
     <div class="panel" id="recentPanel" hidden>
@@ -245,8 +286,8 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 3px 0; font: 11.5px
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
-const S = { sid: null, mode: "play", bots: [], play: null, busy: false,
-            replay: null, hand: null, frame: 0, timer: null, poll: null, selHand: -1 };
+const S = { sid: null, mode: "play", bots: [], multiBots: [], maxPlayers: 8, play: null, busy: false,
+            replay: null, hand: null, frame: 0, timer: null, poll: null, selHand: -1, reasonSeat: "all" };
 const SUITS = { s: "♠", h: "♥", d: "♦", c: "♣" };
 const fmt = (n) => (n == null ? "-" : Number(n).toLocaleString("en-US"));
 const sgn = (n, d = 0) => (n > 0 ? "+" : "") + Number(n).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -301,30 +342,46 @@ function splitCards(text) { const out = []; for (let i = 0; i + 1 < (text || "")
 function seatGeom(i, n, hero) {
   const a = Math.PI / 2 + (2 * Math.PI * (i - hero)) / n;   // screen angle: PI/2 = bottom
   const c = Math.cos(a), s = Math.sin(a);
-  return { x: 50 + 50 * c, y: 50 + 50 * s, bx: 50 + 30 * c, by: 50 + 27 * s,
-           dx: 50 + 33 * Math.cos(a + 0.42), dy: 50 + 32 * Math.sin(a + 0.42) };
+  if (n <= 2) return { x: 50 + 50 * c, y: 50 + 50 * s, bx: 50 + 30 * c, by: 50 + 27 * s,
+                       dx: 50 + 33 * Math.cos(a + 0.42), dy: 50 + 32 * Math.sin(a + 0.42) };
+  const many = n >= 6, off = many ? 0.27 : 0.34;   // dealer button: beside the seat's bet, short of the neighbour's
+  return { x: 50 + 50 * c, y: 50 + 50 * s, bx: 50 + (many ? 31 : 33) * c, by: 50 + (many ? 26 : 29) * s,
+           dx: 50 + (many ? 33 : 37) * Math.cos(a + off), dy: 50 + (many ? 30 : 35) * Math.sin(a + off) };
 }
 function renderTable(t, opt) {
   const seatsEl = $("seats");
+  const n = t ? t.seats.length : 0, multi = n > 2;
+  $("table").classList.toggle("multi", multi); $("table").classList.toggle("many", n >= 6);
+  $("tableWrap").classList.toggle("many", n >= 6);
+  $("pots").hidden = true; $("potres").hidden = true;
   if (!t) { seatsEl.innerHTML = ""; $("board").innerHTML = Array(5).fill('<div class="card slot"></div>').join(""); $("pot").innerHTML = "&nbsp;"; $("banner").hidden = true; return; }
-  const n = t.seats.length, hero = opt.hero ?? 0;
+  const hero = opt.hero ?? 0;
   let html = "";
   t.seats.forEach((p, i) => {
     const g = seatGeom(i, n, hero);
     const cls = ["seat"];
     if (p.to_act && !t.hand_over) cls.push("act");
     if (p.folded) cls.push("folded");
+    if (multi && p.is_hero) cls.push("hero");
     if (opt.winners && opt.winners.includes(p.seat)) cls.push("win");
     let hole = "";
     if (p.cards) hole = p.cards.map((c) => cardHTML(c)).join("");
     else hole = Array(p.hidden_cards).fill(cardHTML(null)).join("");
     const think = opt.thinking === p.seat ? '<div class="thinking">thinking</div>' : "";
-    const last = opt.lastAct && opt.lastAct.seat === p.seat ? `<div class="lastact">${esc(opt.lastAct.text)}</div>` : "";
-    const tag = [p.blind, p.all_in ? "ALL-IN" : "", p.folded ? "folded" : "", p.is_bot ? "" : ""].filter(Boolean).join(" · ");
+    const lastText = opt.lastActs ? opt.lastActs[p.seat] : (opt.lastAct && opt.lastAct.seat === p.seat ? opt.lastAct.text : null);
+    const last = lastText ? `<div class="lastact">${esc(lastText)}</div>` : "";
+    let tagHTML;
+    if (multi) {
+      const extras = [p.blind && p.blind !== p.position ? p.blind : "", p.folded ? "folded" : "", p.rebuys ? `rebuys ${p.rebuys}` : ""].filter(Boolean).join(" · ");
+      tagHTML = `<div class="tag"><span class="pos-tag ${p.position === "BTN" ? "btn" : ""}" title="position">${esc(p.position)}</span>${p.all_in ? '<span class="allin">ALL-IN</span> ' : ""}${esc(extras)}</div>`;
+    } else {
+      const tag = [p.blind, p.all_in ? "ALL-IN" : "", p.folded ? "folded" : ""].filter(Boolean).join(" · ");
+      tagHTML = `<div class="tag">${esc(tag)}</div>`;
+    }
     const handName = opt.handNames && opt.handNames[p.seat] ? `<div class="tag">${esc(opt.handNames[p.seat])}</div>` : "";
-    html += `<div class="${cls.join(" ")}" style="left:${g.x}%;top:${g.y}%">
+    html += `<div class="${cls.join(" ")}" style="left:${g.x}%;top:${g.y}%" data-seat="${p.seat}">
       <div class="hole">${hole}</div>
-      <div class="plate">${last}<div class="nm">${esc(p.name)}</div><div class="st">${fmt(p.stack)}</div><div class="tag">${esc(tag)}</div>${handName}${think}</div></div>`;
+      <div class="plate">${last}<div class="nm" title="${esc(p.name)} (seat ${p.seat})">${esc(p.name)}</div><div class="st">${fmt(p.stack)}</div>${tagHTML}${handName}${think}</div></div>`;
     if (p.bet > 0) html += `<div class="bet" style="left:${g.bx}%;top:${g.by}%"><span class="chip"></span>${fmt(p.bet)}</div>`;
     if (p.button) html += `<div class="dealer" style="left:${g.dx}%;top:${g.dy}%" title="dealer button">D</div>`;
   });
@@ -334,8 +391,28 @@ function renderTable(t, opt) {
   $("board").innerHTML = b.join("");
   const potLine = `Pot ${fmt(t.pot)}` + (t.pot !== t.pot_center && t.pot_center > 0 ? ` <small>(${fmt(t.pot_center)} in the middle)</small>` : "");
   $("pot").innerHTML = potLine + ` <small>· blinds ${t.small_blind}/${t.big_blind}</small>`;
+  const names = t.seats.map((x) => x.name);
+  if (multi && opt.potResults && opt.potResults.length) {
+    $("potres").innerHTML = opt.potResults.map((q) => `<div>${esc(q.label)} ${fmt(q.amount)} &rarr; ${q.winners.map((w, k) => esc(names[w]) + (q.winners.length > 1 ? " " + fmt(q.shares[k]) : "")).join(", ")}${q.hand_name ? " (" + esc(q.hand_name) + ")" : ""}</div>`).join("");
+    $("potres").hidden = false;
+  } else if (multi && t.pots && t.pots.length > 1) {
+    $("pots").innerHTML = t.pots.map((q) => `<span title="eligible: ${esc(q.eligible.map((e) => names[e]).join(", "))}">${esc(q.label)} ${fmt(q.amount)}</span>`).join("");
+    $("pots").hidden = false;
+  }
   const banner = $("banner");
-  if (opt.banner) { banner.textContent = opt.banner; banner.hidden = false; } else banner.hidden = true;
+  const showBanner = opt.banner && !(multi && opt.potResults && opt.potResults.length);
+  if (showBanner) { banner.textContent = opt.banner; banner.hidden = false; } else banner.hidden = true;
+}
+// The latest action of every seat on the current street (the bubbles on a multiway table).
+function streetActs(lines, t, names, upto) {
+  if (!t || t.hand_over) return null;
+  const out = {}, show = upto == null ? lines : lines.slice(0, upto);
+  for (const l of show) {
+    if (l.deal || l.seat == null || l.street !== t.street) continue;
+    const nm = names[l.seat];
+    out[l.seat] = l.text.startsWith(nm + " ") ? l.text.slice(nm.length + 1) : l.text;
+  }
+  return out;
 }
 
 // ---------- reasoning ----------
@@ -354,6 +431,11 @@ function decisionHTML(e, names, current) {
     <span>board ${cardsInline(e.board)}</span><span class="msg">pot ${fmt(e.pot)}${e.to_call ? ", to call " + fmt(e.to_call) : ""}</span>
     <span class="ch">&rarr; ${esc(e.action)}</span></div>`;
   if (d.kind === "ev") {
+    if (d.multiway) {
+      h += `<div class="kv"><span>Equity</span><span>${pct(d.equity)} &plusmn; ${pct(d.std_error)} vs ${esc(d.n_opponents)} opponent${d.n_opponents === 1 ? "" : "s"} <span class="badge">${esc(d.mode)}</span></span>
+        <span>Pot odds</span><span>${d.pot_odds == null ? "not facing a bet" : pct(d.pot_odds) + " needed to call"}${d.winnable_pot != null ? " (winnable pot " + fmt(d.winnable_pot) + ")" : ""}</span></div>`;
+      if (d.opponents && d.opponents.length) h += `<details><summary>opponent models (${d.opponents.length})</summary><pre>${esc(d.opponents.join("\n"))}</pre></details>`;
+    } else
     h += `<div class="kv"><span>Equity</span><span>${pct(d.equity)} &plusmn; ${pct(d.std_error)} vs top ${pct(d.villain_range, 0)} of hands</span>
       <span>Pot odds</span><span>${d.pot_odds == null ? "not facing a bet" : pct(d.pot_odds) + " needed to call"}</span></div>`;
     h += '<div class="msg" style="font-size:12px">EV per action (chips, one-street model):</div>';
@@ -380,11 +462,28 @@ function renderReasoning(list, names, opt = {}) {
   const el = $("reasoning");
   if (opt.hiddenMsg) { el.innerHTML = `<div class="hidden-note">${opt.hiddenMsg}</div>`; return; }
   if (!list || !list.length) { el.innerHTML = `<div class="hidden-note">${opt.empty || "No bot decisions yet."}</div>`; return; }
-  let h = opt.peek ? '<div class="peekbanner">Live reasoning is ON: you are peeking at the bot\'s thinking during the hand.</div>' : "";
-  h += list.map((e) => decisionHTML(e, names, opt.current === e.index)).join("");
+  let h = opt.peek ? `<div class="peekbanner">Live reasoning is ON: you are peeking at ${opt.multi ? "the bots'" : "the bot's"} thinking during the hand.</div>` : "";
+  const shown = S.reasonSeat === "all" || !opt.multi ? list : list.filter((e) => String(e.seat) === S.reasonSeat);
+  if (!shown.length) h += '<div class="hidden-note">No decisions by this bot yet.</div>';
+  h += shown.map((e) => decisionHTML(e, names, opt.current === e.index)).join("");
   el.innerHTML = h;
   if (opt.current != null) { const cur = el.querySelector(".dec.cur"); if (cur) cur.scrollIntoView({ block: "nearest" }); }
   else if (opt.scrollEnd) el.scrollTop = el.scrollHeight;
+}
+// The "which bot" filter of the reasoning panel (multiway only).
+function setReasonSeats(names, botSeats) {
+  const sel = $("reasonSeat"), multi = !!names && names.length > 2;
+  sel.hidden = !multi;
+  $("reasonTitle").textContent = multi ? "How the bots thought" : "How the bot thought";
+  if (!multi) return;
+  const opts = [["all", "all bots"], ...botSeats.map((s) => [String(s), names[s]])];
+  const key = opts.map((o) => o.join("=")).join("|");
+  if (sel.dataset.key !== key) {
+    sel.innerHTML = opts.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join("");
+    sel.dataset.key = key;
+    if (!opts.some((o) => o[0] === S.reasonSeat)) S.reasonSeat = "all";
+  }
+  sel.value = S.reasonSeat;
 }
 function renderLog(lines, upto) {
   const el = $("log");
@@ -409,8 +508,58 @@ async function loadBots() {
   const pick = (k) => S.bots.find((b) => b.key === k && b.available) ? k : "bayes";
   $("botSel").value = pick("bayes"); $("botA").value = pick("cfr"); $("botB").value = "bayes";
   $("rhands").max = data.max_replay_hands;
+  S.multiBots = data.multi_bots || []; S.maxPlayers = data.max_players || 2;
+  const counts = []; for (let k = 2; k <= S.maxPlayers; k++) counts.push(k);
+  for (const id of ["nPlayers", "rPlayers"]) $(id).innerHTML = counts.map((k) => `<option value="${k}">${k === 2 ? "2 (heads-up)" : k}</option>`).join("");
+  for (const id of ["fillSel", "rFillSel"]) $(id).innerHTML = multiOptions();
+  const mpick = ["equity", "potodds", "call"].find((k) => S.multiBots.some((b) => b.key === k && b.available)) || "call";
+  $("fillSel").value = mpick; $("rFillSel").value = mpick;
+  layoutPlayConfig(); layoutReplayConfig();
   const cfr = S.bots.find((b) => b.key === "cfr");
   status(cfr && !cfr.available ? "CFRBot unavailable: " + cfr.unavailable_reason : "ready");
+}
+
+// ---------- multiway set-up (players, your seat, a bot per seat) ----------
+function multiOptions() {
+  return S.multiBots.map((b) => `<option value="${esc(b.key)}" ${b.available ? "" : "disabled"} title="${esc(b.available ? b.description : b.unavailable_reason)}">${esc(b.name)}${b.available ? "" : " (unavailable)"}</option>`).join("");
+}
+function seatRow(el, n, hero, fill) {
+  const old = {};
+  el.querySelectorAll("select[data-seat]").forEach((x) => { old[x.dataset.seat] = x.value; });
+  let h = "";
+  for (let i = 0; i < n; i++) {
+    if (i === hero) { h += `<label>Seat ${i} <span class="you">You</span></label>`; continue; }
+    h += `<label>Seat ${i} <select data-seat="${i}">${multiOptions()}</select></label>`;
+  }
+  el.innerHTML = h;
+  el.querySelectorAll("select[data-seat]").forEach((x) => { x.value = old[x.dataset.seat] || fill; if (!x.value) x.value = fill; });
+}
+function seatKeys(el, n, hero) {
+  const out = [];
+  for (let i = 0; i < n; i++) { const x = el.querySelector(`select[data-seat="${i}"]`); out.push(i === hero || !x ? null : x.value); }
+  return out;
+}
+function layoutPlayConfig() {
+  const n = Number($("nPlayers").value || 2), multi = n > 2;
+  $("oppLbl").hidden = multi; $("heroLbl").hidden = $("fillLbl").hidden = $("keepLbl").hidden = !multi;
+  $("seatCfg").hidden = !multi || S.mode !== "play";
+  if (!multi) return;
+  const hs = $("heroSeat"), prev = Math.min(Number(hs.value || 0), n - 1);
+  hs.innerHTML = Array.from({ length: n }, (_, i) => `<option value="${i}">Seat ${i}</option>`).join("");
+  hs.value = String(prev);
+  seatRow($("seatCfg"), n, prev, $("fillSel").value);
+}
+function layoutReplayConfig() {
+  const n = Number($("rPlayers").value || 2), multi = n > 2;
+  $("botALbl").hidden = $("botBLbl").hidden = multi; $("rFillLbl").hidden = !multi;
+  $("rseatCfg").hidden = !multi || S.mode !== "replay";
+  if (multi) seatRow($("rseatCfg"), n, -1, $("rFillSel").value);
+}
+function fillSeats(el, key) { el.querySelectorAll("select[data-seat]").forEach((x) => { x.value = key; }); }
+function botsAre(p) { return p && p.multiway ? "The bots are" : (p ? p.bot.name : "The bot") + " is"; }
+function renderStandings(el, rows) {
+  el.innerHTML = '<table class="stand"><tr><th>seat</th><th>player</th><th class="num">net</th><th class="num">bb</th><th></th></tr>' + rows.map((r) =>
+    `<tr><td>${r.seat}</td><td>${esc(r.name)}</td><td class="num ${r.net > 0 ? "pos" : r.net < 0 ? "neg" : ""}">${sgn(r.net)}</td><td class="num">${sgn(r.bb, 1)}</td><td class="msg">${r.extra || ""}</td></tr>`).join("") + "</table>";
 }
 
 // ---------- PLAY ----------
@@ -420,16 +569,27 @@ function renderPlay() {
   const bar = $("actionBar");
   if (!p) { renderTable(null, {}); return; }
   const t = p.table, over = p.status === "hand_over" || p.status === "error";
-  const lastBot = [...(p.log || [])].reverse().find((l) => l.seat === 1 && !l.deal);
-  renderTable(t, {
-    hero: p.hero_seat, thinking: S.busy && !over ? 1 : null,
-    banner: p.result ? p.result.headline : (p.error ? "hand abandoned (bot error)" : null),
-    winners: p.result ? p.result.winners : null, handNames: p.result ? p.result.hand_names : null,
-    lastAct: !over && lastBot && lastBot.street === (t && t.street) ? { seat: 1, text: lastBot.text.replace(p.bot.name + " ", "") } : null,
-  });
+  const names = playNames(p);
+  if (p.multiway) {
+    renderTable(t, {
+      hero: p.hero_seat, banner: p.result ? p.result.headline : (p.error ? "hand abandoned (bot error)" : null),
+      winners: p.result ? p.result.winners : null, handNames: p.result ? p.result.hand_names : null,
+      potResults: p.result && p.result.showdown ? p.result.pots : null,
+      lastActs: streetActs(p.log || [], t, names),
+    });
+  } else {
+    const lastBot = [...(p.log || [])].reverse().find((l) => l.seat === 1 && !l.deal);
+    renderTable(t, {
+      hero: p.hero_seat, thinking: S.busy && !over ? 1 : null,
+      banner: p.result ? p.result.headline : (p.error ? "hand abandoned (bot error)" : null),
+      winners: p.result ? p.result.winners : null, handNames: p.result ? p.result.hand_names : null,
+      lastAct: !over && lastBot && lastBot.street === (t && t.street) ? { seat: 1, text: lastBot.text.replace(p.bot.name + " ", "") } : null,
+    });
+  }
   // score
   const sc = p.score;
-  $("score").innerHTML = `<span>vs <b>${esc(p.bot.name)}</b></span><span>hands <b>${sc.hands}</b></span>
+  const vs = p.multiway ? `<span><b>${p.n_players}</b>-handed${p.keep_stacks ? " · stacks kept" : ""}</span>` : `<span>vs <b>${esc(p.bot.name)}</b></span>`;
+  $("score").innerHTML = `${vs}<span>hands <b>${sc.hands}</b></span>
     <span>you <b class="${sc.chips > 0 ? "pos" : sc.chips < 0 ? "neg" : ""}">${sgn(sc.chips)} chips</b></span>
     <span><b class="${sc.bb > 0 ? "pos" : sc.bb < 0 ? "neg" : ""}">${sgn(sc.bb, 1)} bb</b></span>
     ${sc.bb_per_100 == null ? "" : `<span>${sgn(sc.bb_per_100, 0)} bb/100</span>`}
@@ -458,15 +618,27 @@ function renderPlay() {
   $("endSession").disabled = S.busy;
   $("newGame").disabled = S.busy;
   $("showCards").hidden = !(p.status === "hand_over" && !p.bot_cards_visible);
+  $("showCards").textContent = p.multiway ? "Show all cards" : "Show bot cards";
   $("msg").className = "msg";
-  $("msg").textContent = S.busy ? `${p.bot.name} is thinking...` : p.status === "your_turn" ? "Your turn." : p.status === "error" ? p.error : over ? (p.bot_cards_revealed_on_request ? "Bot cards shown on request (not shown at the table)." : "") : "";
+  $("msg").textContent = S.busy ? `${botsAre(p)} thinking...` : p.status === "your_turn" ? "Your turn." : p.status === "error" ? p.error : over ? (p.bot_cards_revealed_on_request ? (p.multiway ? "All cards shown on request (mucked hands were not shown at the table)." : "Bot cards shown on request (not shown at the table).") : "") : "";
   if (p.status === "error") $("msg").className = "msg err";
   // panels
-  const names = playNames(p);
+  setReasonSeats(p.multiway ? names : null, p.multiway ? p.players.filter((x) => x.is_bot).map((x) => x.seat) : []);
   if (p.reasoning_hidden) renderReasoning(null, names, { hiddenMsg: "Hidden until the hand is over. (Tick <b>Show reasoning live</b> to peek.)" });
-  else renderReasoning(p.reasoning, names, { peek: p.live && !over, scrollEnd: true, empty: "The bot made no decisions this hand." });
+  else renderReasoning(p.reasoning, names, { peek: p.live && !over, scrollEnd: true, multi: p.multiway, empty: p.multiway ? "The bots made no decisions this hand." : "The bot made no decisions this hand." });
   renderLog(p.log || []);
-  $("modelPanel").hidden = !p.bot_model; $("model").textContent = (p.bot_model || []).join("\n");
+  if (p.multiway) {
+    const models = p.bot_models || {};
+    $("modelTitle").textContent = "What the learning bots know about the table";
+    $("modelPanel").hidden = !Object.keys(models).length;
+    $("model").textContent = Object.entries(models).map(([s, lines]) => names[Number(s)] + ":\n" + lines.join("\n")).join("\n\n");
+    $("standPanel").hidden = false;
+    renderStandings($("stand"), p.players.map((x) => ({ seat: x.seat, name: x.name, net: x.session_net, bb: x.session_bb, extra: x.rebuys ? `${x.rebuys} rebuy${x.rebuys > 1 ? "s" : ""}` : "" })));
+  } else {
+    $("modelTitle").textContent = "What BayesBot has learned about you";
+    $("modelPanel").hidden = !p.bot_model; $("model").textContent = (p.bot_model || []).join("\n");
+    $("standPanel").hidden = true;
+  }
   $("recentPanel").hidden = !(p.recent && p.recent.length);
   $("recent").innerHTML = (p.recent || []).slice(-40).map((r) => `<span class="${r.net > 0 ? "pos" : r.net < 0 ? "neg" : ""}" title="hand ${r.hand}: ${esc(r.headline)}">${sgn(r.net_bb, 1)}${r.peeked ? "*" : ""}</span>`).join("");
   $("live").checked = !!p.live;
@@ -497,15 +669,31 @@ async function playCall(path, body, optimistic) {
 }
 function renderPlayBusy() {
   for (const id of ["bFold", "bCall", "bRaise", "slider", "amount", "nextHand", "newGame"]) $(id).disabled = true;
-  if (S.play && S.play.table) {
+  if (S.play && S.play.table && !S.play.multiway) {
     const seats = document.querySelectorAll(".seat");
     if (seats[1] && !seats[1].querySelector(".thinking")) seats[1].querySelector(".plate").insertAdjacentHTML("beforeend", '<div class="thinking">thinking</div>');
+  } else if (S.play && S.play.multiway && S.play.status === "your_turn") {
+    // After your action the next bot to decide is the first seat clockwise that can still act
+    // (a guess only if your action closes the street; the server answers when every bot is done).
+    const t = S.play.table, n = t.seats.length;
+    for (let k = 1; k < n; k++) {
+      const p = t.seats[(S.play.hero_seat + k) % n];
+      if (p.folded || p.all_in) continue;
+      const el = document.querySelector(`#seats .seat[data-seat="${p.seat}"] .plate`);
+      if (el && !el.querySelector(".thinking")) el.insertAdjacentHTML("beforeend", '<div class="thinking">thinking</div>');
+      break;
+    }
   }
 }
 async function newGame() {
   const seed = $("seed").value.trim();
   if (seed && !/^\d+$/.test(seed)) { status("seed must be a whole number (or empty for random)", true); return; }
-  await playCall("/api/play/new", { bot: $("botSel").value, seed: seed === "" ? null : seed }, "Dealing...");
+  const n = Number($("nPlayers").value || 2);
+  if (n > 2) {
+    const hero = Number($("heroSeat").value || 0);
+    await playCall("/api/play/new", { players: n, hero_seat: hero, seats: seatKeys($("seatCfg"), n, hero), fill: $("fillSel").value,
+                                       keep_stacks: $("keepStacks").checked, seed: seed === "" ? null : seed }, "Dealing...");
+  } else await playCall("/api/play/new", { bot: $("botSel").value, seed: seed === "" ? null : seed }, "Dealing...");
   $("newGame").disabled = false;
   if (S.mode === "play" && S.play) renderPlay();
 }
@@ -520,7 +708,7 @@ function act(kind) {
     kind = L.can_bet ? "bet" : "raise";
     text = (L.can_bet ? "You bet " : "You raise to ") + fmt(amount);
   } else text = { fold: "You fold", check: "You check", call: "You call " + fmt(L.call_amount) }[kind];
-  playCall("/api/play/act", { action: kind, amount, expected_step: S.play.step }, text + ". " + S.play.bot.name + " is thinking...");
+  playCall("/api/play/act", { action: kind, amount, expected_step: S.play.step }, text + ". " + botsAre(S.play) + " thinking...");
 }
 
 // ---------- REPLAY ----------
@@ -531,8 +719,10 @@ async function runReplay() {
   if (seed && !/^\d+$/.test(seed)) { status("seed must be a whole number (or empty for random)", true); return; }
   const hands = Number($("rhands").value);
   if (!Number.isInteger(hands) || hands < 1 || hands > Number($("rhands").max)) { status(`hands must be 1..${$("rhands").max}`, true); return; }
+  const n = Number($("rPlayers").value || 2);
+  const body = n > 2 ? { bots: seatKeys($("rseatCfg"), n, -1) } : { bot_a: $("botA").value, bot_b: $("botB").value };
   try {
-    S.replay = await withSession(() => api("POST", "/api/replay/start", { session: S.sid, bot_a: $("botA").value, bot_b: $("botB").value, seed: seed === "" ? null : seed, hands }));
+    S.replay = await withSession(() => api("POST", "/api/replay/start", { session: S.sid, ...body, seed: seed === "" ? null : seed, hands }));
     S.hand = null; S.selHand = -1; S.frame = 0;
     renderReplayList(); pollReplay();
   } catch (e) { status(e.message, true); }
@@ -555,6 +745,19 @@ function renderReplayList() {
   $("rprog").style.width = (100 * r.done / r.n_hands) + "%";
   $("rinfo").textContent = `${r.done}/${r.n_hands} hands · ${r.status}${r.error ? ": " + r.error : ""} · seed ${r.seed} · ${r.elapsed.toFixed(1)} s`;
   if (r.status === "error") status("replay error: " + r.error, true);
+  if (r.multiway) {
+    const names = r.bots.map((x) => x.name);
+    $("rtotal").textContent = `${r.n_players}-handed`;
+    renderStandings($("rstand"), r.bots.map((x, i) => ({ seat: i, name: x.name, net: r.total[i], bb: r.total_bb[i], extra: r.done ? sgn(100 * r.total_bb[i] / r.done, 0) + " bb/100" : "" })));
+    let h = "<table><tr><th>#</th><th>button</th><th>pot</th><th>end</th><th>result</th></tr>";
+    for (const s of r.hands) {
+      h += `<tr class="row ${s.index === S.selHand ? "sel" : ""}" data-h="${s.index}"><td>${s.index + 1}</td><td>${esc(names[s.button])}</td>
+        <td class="num">${fmt(s.pot)}</td><td>${s.showdown ? "showdown" + (s.pots > 1 ? ` (${s.pots} pots)` : "") : esc(s.street) + " fold"}</td><td class="msg">${esc(s.headline)}</td></tr>`;
+    }
+    $("hands").innerHTML = h + "</table>";
+    return;
+  }
+  $("rstand").innerHTML = "";
   const [a, b] = r.bots.map((x) => x.name);
   const bb100 = r.done ? (100 * r.total_bb[0] / r.done) : 0;
   $("rtotal").innerHTML = `${esc(a)}: <b class="${r.total[0] > 0 ? "pos" : r.total[0] < 0 ? "neg" : ""}">${sgn(r.total_bb[0], 1)} bb</b> (${sgn(bb100, 0)} bb/100)`;
@@ -580,6 +783,8 @@ function renderFrame() {
   renderTable(f.table, {
     hero: 0, banner: f.result ? f.result.headline : null,
     winners: f.result ? f.result.winners : null, handNames: f.result ? f.result.hand_names : null,
+    potResults: H.multiway && f.result && f.result.showdown ? f.result.pots : null,
+    lastActs: H.multiway ? streetActs(H.log, f.table, H.names, f.lines) : null,
     lastAct: ev.type === "action" ? { seat: ev.seat, text: ev.text.replace(H.names[ev.seat] + " ", "") } : null,
   });
   $("stepInfo").textContent = `hand ${H.index + 1} · step ${S.frame + 1}/${H.frames.length} · ${ev.text}`;
@@ -587,7 +792,8 @@ function renderFrame() {
   let upto = -1;
   for (let k = 0; k <= S.frame; k++) if (H.frames[k].decision != null) upto = H.frames[k].decision;
   const list = H.reasoning.filter((e) => e.index <= upto);
-  renderReasoning(list, H.names, { current: f.decision, empty: "No decisions yet: step forward." });
+  setReasonSeats(H.multiway ? H.names : null, H.names.map((_, i) => i));
+  renderReasoning(list, H.names, { current: f.decision, multi: H.multiway, empty: "No decisions yet: step forward." });
   renderLog(H.log, f.lines);
   $("sFirst").disabled = $("sPrev").disabled = S.frame === 0;
   $("sNext").disabled = $("sLast").disabled = last;
@@ -617,9 +823,10 @@ function setMode(m) {
   $("tabPlay").classList.toggle("on", m === "play"); $("tabReplay").classList.toggle("on", m === "replay");
   $("playBar").hidden = $("actionBar").hidden = m !== "play";
   $("replayBar").hidden = $("stepper").hidden = $("handsPanel").hidden = m !== "replay";
-  $("modelPanel").hidden = $("recentPanel").hidden = true;
-  if (m === "play") { if (S.play) renderPlay(); else { renderTable(null, {}); renderReasoning(null, null, { empty: "Choose an opponent and press New game." }); renderLog([]); } }
-  else { if (S.hand) renderFrame(); else { renderTable(null, {}); renderReasoning(null, null, { empty: "Choose two bots and press Run." }); renderLog([]); } renderReplayList(); }
+  $("modelPanel").hidden = $("recentPanel").hidden = $("standPanel").hidden = true;
+  layoutPlayConfig(); layoutReplayConfig();
+  if (m === "play") { if (S.play) renderPlay(); else { setReasonSeats(null, []); renderTable(null, {}); renderReasoning(null, null, { empty: "Choose an opponent (or a table size) and press New game." }); renderLog([]); } }
+  else { if (S.hand) renderFrame(); else { setReasonSeats(null, []); renderTable(null, {}); renderReasoning(null, null, { empty: "Choose the bots and press Run." }); renderLog([]); } renderReplayList(); }
 }
 $("tabPlay").onclick = () => setMode("play");
 $("tabReplay").onclick = () => setMode("replay");
@@ -636,6 +843,11 @@ $("amount").oninput = () => { $("slider").value = $("amount").value; updateRaise
 $("amount").onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); act("raise"); } };
 $("presets").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; $("amount").value = $("slider").value = b.dataset.to; updateRaiseLabel(); };
 $("runReplay").onclick = runReplay;
+$("nPlayers").onchange = layoutPlayConfig; $("rPlayers").onchange = layoutReplayConfig;
+$("heroSeat").onchange = layoutPlayConfig;
+$("fillSel").onchange = () => fillSeats($("seatCfg"), $("fillSel").value);
+$("rFillSel").onchange = () => fillSeats($("rseatCfg"), $("rFillSel").value);
+$("reasonSeat").onchange = () => { S.reasonSeat = $("reasonSeat").value; if (S.mode === "play") renderPlay(); else renderFrame(); };
 $("cancelReplay").onclick = async () => { try { S.replay = await api("POST", "/api/replay/cancel", { session: S.sid }); renderReplayList(); } catch (e) { status(e.message, true); } };
 $("exportReplay").onclick = () => { window.location.href = "/api/replay/export?session=" + encodeURIComponent(S.sid); };
 $("hands").onclick = (e) => { const tr = e.target.closest("tr[data-h]"); if (tr) { stopTimer(); loadHand(Number(tr.dataset.h)); } };
@@ -670,12 +882,22 @@ document.addEventListener("keydown", (e) => {
   // Optional autostart from the URL: #play=bayes&seed=1  or  #replay=cfr,bayes&seed=7&hands=20
   const h = new URLSearchParams(location.hash.slice(1));
   if (h.get("seed")) { $("seed").value = h.get("seed"); $("rseed").value = h.get("seed"); }
-  if (h.get("play")) { $("botSel").value = h.get("play"); newGame(); }
-  else if (h.get("replay")) {
-    const [a, b] = h.get("replay").split(",");
-    $("botA").value = a; $("botB").value = b || a;
+  // multiway: #play=call&players=6&seat=2&keep=1 (play= fills the other seats), #replay=call,raise,random&hands=10
+  const np = Number(h.get("players") || 2);
+  if (h.get("play")) {
+    if (np > 2) {
+      $("nPlayers").value = String(np); layoutPlayConfig(); $("heroSeat").value = h.get("seat") || "0"; layoutPlayConfig();
+      $("fillSel").value = h.get("play"); fillSeats($("seatCfg"), h.get("play")); $("keepStacks").checked = h.get("keep") === "1";
+    } else $("botSel").value = h.get("play");
+    newGame();
+  } else if (h.get("replay")) {
+    const keys = h.get("replay").split(",");
     if (h.get("hands")) $("rhands").value = h.get("hands");
-    setMode("replay"); runReplay();
+    if (keys.length > 2) {
+      setMode("replay"); $("rPlayers").value = String(keys.length); layoutReplayConfig();
+      keys.forEach((k, i) => { const x = $("rseatCfg").querySelector(`select[data-seat="${i}"]`); if (x) x.value = k; });
+    } else { $("botA").value = keys[0]; $("botB").value = keys[1] || keys[0]; setMode("replay"); }
+    runReplay();
   }
 })();
 </script>

@@ -11,6 +11,14 @@ then open the printed URL (http://127.0.0.1:8765/). Only 127.0.0.1 is served.
   EV per action, BayesBot's model of you, CFRBot's bucket and strategy).
 - Replay: two bots play up to 200 hands; step through any hand action by
   action with all cards shown and the acting bot's reasoning.
+- Multiway (Players 3..8): pick your seat and a bot per seat ("Fill with"
+  sets them all); positions, main/side pots, every bot's reasoning, and
+  optional "Keep stacks" (stacks carry over, busted seats rebuy 10,000).
+  Replay also takes 3..8 bots. Built-in multiway bots: Random,
+  CallStation, AlwaysRaise; the tiered ones from nutsfinder.bots.multiway
+  (PotOdds, Equity, Bayes, CFR) appear automatically once that module
+  provides them. Autostart links: #play=call&players=6&seat=2&keep=1 and
+  #replay=random,raise,call,call&hands=20&seed=7.
 
 CFRBot needs the trained model (default models\holdem_official\latest.npz);
 if it is missing CFRBot is shown as unavailable. The turn E[HS] tables
