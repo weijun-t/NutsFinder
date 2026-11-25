@@ -128,14 +128,16 @@ def z_test_p_value(m: float, se: float) -> float:
     numbers alone cannot tell which. ``nan < 0.05`` is False, so such a
     result is never reported as significant.
 
-    The tail is computed as ``2 * cdf(-z)`` rather than ``2 * (1 - cdf(z))``:
-    for large z, ``cdf(z)`` rounds to exactly 1.0 (around z = 8.3) and the
-    subtraction gives 0, while ``cdf(-z)`` stays accurate down to ~1e-300.
+    The tail is computed as ``erfc(z / sqrt 2)`` (= ``2 * cdf(-z)``) rather than
+    ``2 * (1 - cdf(z))``: for large z, ``cdf(z)`` rounds to exactly 1.0 (around
+    z = 8.3) and the subtraction gives 0, while ``erfc`` stays accurate down to
+    ~1e-300. ``NormalDist.cdf`` itself is not used because before Python 3.13 it
+    is computed as ``0.5 * (1 + erf(...))``, which has the same cancellation.
     """
     if se == 0:
         return math.nan
     z = abs(m) / se
-    return 2 * _STD_NORMAL.cdf(-z)
+    return math.erfc(z / math.sqrt(2.0))
 
 
 @dataclass(frozen=True, slots=True)

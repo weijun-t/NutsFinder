@@ -326,10 +326,12 @@ def test_official_splices_results_below_the_marker_once(cheap, monkeypatch, tmp_
         sm.main(["--processes", "1"])
 
 
-def test_preregistration_has_the_marker_and_no_results_yet():
+def test_preregistration_has_the_marker_and_results_only_below_it():
     text = sm.MD.read_text(encoding="utf-8")
     head, sep, tail = text.partition(sm.RESULTS_MARKER)
-    assert sep and not tail.strip()
+    # Before the official run nothing is below the marker; after it, the run's results are.
+    assert sep and (not tail.strip() or "**Verdict:" in tail)
+    assert "**Verdict:" not in head
     assert str(sm.MASTER_SEED) in head and f"N = {sm.N_SESSIONS['mixed']}" in head
 
 

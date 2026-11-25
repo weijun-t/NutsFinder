@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -102,6 +103,10 @@ def test_official_preflop_table_must_exist_with_the_pinned_hash(monkeypatch, tmp
 
 
 def test_pinned_preflop_table_hash_matches_the_local_file():
+    # models/ is not in git: on CI the table is rebuilt on first use, and the
+    # .npz bytes (zip timestamps) differ, so the pin only applies to the owner's file.
+    if os.environ.get("CI"):
+        pytest.skip("CI builds its own preflop table; the pin is for the official local file")
     if not rl.PREFLOP_TABLE_FILE.exists():
         pytest.skip("no local preflop table")
     assert rl.file_sha256(rl.PREFLOP_TABLE_FILE) == rl.PREFLOP_TABLE_SHA256
